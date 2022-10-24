@@ -47,6 +47,16 @@ const short iso88595_utf8[128] = {
     0x440, 0x441, 0x442, 0x443, 0x444, 0x445, 0x446, 0x447, 0x448, 0x449, 0x44A, 0x44B, 0x44C, 0x44D, 0x44E, 0x44F,
     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0};
 
+const short* get_characters_set(encodings_e encoding) {
+    switch (encoding) {
+        case cp1251: return cp1251_utf8;
+        case koi8r:  return koi8r_utf8;
+        case iso88595: return iso88595_utf8;
+        case undefined: return NULL;
+    }
+    return NULL;
+}
+
 int main(int argc, char** argv) {
     int opt_char = 0;
     int opt_idx = 0;
@@ -106,10 +116,12 @@ int main(int argc, char** argv) {
 
     FILE* out_fp = fopen(output_file_name, "w+");
 
-    char encoded_buf[k_encoded_buf_sz];
-    char utf8_buf[k_utf8_buf_sz];
+    unsigned char encoded_buf[k_encoded_buf_sz];
+    unsigned char utf8_buf[k_utf8_buf_sz];
+    const short* characters_set = get_characters_set(encoding);
+    assert(characters_set);
 
-    while (NULL != fgets(encoded_buf, sizeof encoded_buf, in_fp)) {
+    while (NULL != fgets(encoded_buf, (int)sizeof encoded_buf, in_fp)) {
         size_t i = 0, j = 0;
         for (; encoded_buf[i] != '\0'; ++i) {
             unsigned char encoded_symbol = encoded_buf[i];
@@ -118,21 +130,7 @@ int main(int argc, char** argv) {
             if (encoded_symbol < 0x80) { // ascii symbol
                 utf8_buf[j++] = encoded_symbol;
             } else {
-                encoded_symbol -= 128;
-                short utf8_code = 0;
-                switch (encoding) {
-                    case cp1251:
-                        utf8_code = cp1251_utf8[encoded_symbol];
-                        break;
-                    case koi8r:
-                        utf8_code = koi8r_utf8[encoded_symbol];
-                        break;
-                    case iso88595:
-                        utf8_code = iso88595_utf8[encoded_symbol];
-                        break;
-                    case undefined:
-                        break;
-                }
+                short utf8_code = characters_set[encoded_symbol - 128];
                 utf8_buf[j++] = 0xC0 | (utf8_code >> 6);
                 utf8_buf[j++] = 0x80 | (utf8_code & 0x3f);
             }
