@@ -1,0 +1,4 @@
+[wrap-git]
+url = https://git.cryptomilk.org/projects/cmocka.git
+revision = master
+depth = 1

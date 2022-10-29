@@ -1,0 +1,36 @@
+---
+Checks: '-*,
+         clang-analyzer-*,-clang-analyzer-cplusplus*,
+         bugprone-*,
+         misc-*,
+         performance-*'
+HeaderFilterRegex: '.*'
+CheckOptions:
+  - key:             readability-identifier-naming.FunctionCase
+    value:           lower_case
+  - key:             readability-identifier-naming.GlobalConstantCase
+    value:           lower_case
+  - key:             readability-identifier-naming.GlobalConstantPrefix
+    value:           'g'
+  - key:             readability-identifier-naming.GlobalFunctionCase
+    value:           lower_case
+  - key:             readability-identifier-naming.GlobalVariableCase
+    value:           lower_case
+  - key:             readability-identifier-naming.GlobalVariablePrefix
+    value:           'g'
+  - key:             readability-identifier-naming.LocalConstantCase
+    value:           lower_case
+  - key:             readability-identifier-naming.LocalConstantPrefix
+    value:           'k'
+  - key:             readability-identifier-naming.LocalVariableCase
+    value:           lower_case
+  - key:             readability-identifier-naming.ParameterCase
+    value:           lower_case
+  - key:             readability-identifier-naming.ConstantParameterCase
+    value:           lower_case
+  - key:             readability-identifier-naming.StaticVariableCase
+    value:           lower_case
+  - key:             readability-identifier-naming.StaticVariablePrefix
+    value:           'k'
+  - key:             readability-identifier-naming.StructCase
+    value:           lower_case
