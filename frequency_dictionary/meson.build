@@ -5,10 +5,12 @@ project(
 )
 
 sources = ['src/main.c']
+incdir = include_directories('../include')
 
 executable(
     meson.project_name(), 
     sources,
+    include_directories: incdir,
     c_args: ['-Wall', '-Wextra', '-Wpedantic']
 )
 

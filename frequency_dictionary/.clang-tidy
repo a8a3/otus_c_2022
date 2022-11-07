@@ -2,7 +2,9 @@
 Checks: '-*,
          clang-analyzer-*,-clang-analyzer-cplusplus*,
          bugprone-*,
+         -bugprone-easily-swappable-parameters,
          misc-*,
+         -misc-no-recursion,
          performance-*'
 HeaderFilterRegex: '.*'
 CheckOptions:

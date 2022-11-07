@@ -1,6 +1,9 @@
+#include <frequency_dictionary.h>
 #include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include <time.h>
 
 void print_help() {
     printf("OPTIONS:\n"
@@ -47,10 +50,13 @@ int main(int argc, char** argv) {
         fprintf(stderr, "unable to open file: %s\n", file_name);
         exit(EXIT_FAILURE);
     }
-
-// TODO
-// read by word
-
+    frequency_dictionary* fd = create_frequency_dictionary(fp);
+    if (NULL == fd) {
+        fprintf(stderr, "unable to create frequency dictionary\n");
+        exit(EXIT_FAILURE);
+    }
+    frequency_dictionary_print(fd);
+    remove_frequency_dictionary(&fd);
     fclose(fp);
     exit(EXIT_SUCCESS);
 }
