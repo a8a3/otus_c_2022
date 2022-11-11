@@ -1,5 +1,6 @@
-#include <frequency_dictionary.h>
+#include <frequency_dict.h>
 #include <getopt.h>
+#include <hash_map.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -50,13 +51,16 @@ int main(int argc, char** argv) {
         fprintf(stderr, "unable to open file: %s\n", file_name);
         exit(EXIT_FAILURE);
     }
-    frequency_dictionary* fd = create_frequency_dictionary(fp);
-    if (NULL == fd) {
-        fprintf(stderr, "unable to create frequency dictionary\n");
+
+    hash_map* hm = create_hash_map(HASH_MAP_DEFAULT_SIZE);
+    if (NULL == hm) {
+        fprintf(stderr, "unable to create hash map\n");
         exit(EXIT_FAILURE);
     }
-    frequency_dictionary_print(fd);
-    remove_frequency_dictionary(&fd);
+    hash_map_init(hm, fp);
+    hash_map_print(hm);
+    remove_hash_map(&hm);
+
     fclose(fp);
     exit(EXIT_SUCCESS);
 }

@@ -3,10 +3,10 @@
 #include <stdlib.h>
 #include <setjmp.h>
 
-#define UNIT_TESTING // this define allows to enable memory leaks checking awailable in cmocka framework
+#define UNIT_TESTING // this define enable memory leaks checking awailable in cmocka framework
 #include <cmocka.h>
 #include <hash_map.h>
-#include <frequency_dictionary.h>
+#include <frequency_dict.h>
 
 static void pirsons_hash_test(void **state) { //NOLINT
     uint32_t cat_hash = pirsons_hash("cat", 3);
@@ -87,30 +87,76 @@ static void hash_map_rehashing_test(void **state) { // NOLINT
     remove_hash_map(&m);
 }
 
-static void frequency_dictionary_test(void **state) { // NOLINT
+static void words_counting_test(void **state) { // NOLINT
     FILE* tmp_file = tmpfile();
     fputs("one\n", tmp_file);
-    fputs("two two\n", tmp_file);
+    fputs("два два\n", tmp_file);
     fputs("three three three\n", tmp_file);
+    fputs("четыре,четыре,четыре,четыре\n", tmp_file);
     rewind(tmp_file);
 
-    frequency_dictionary* fd = create_frequency_dictionary(tmp_file);
-    assert_ptr_not_equal(fd, NULL);
+    hash_map* hm = create_hash_map(HASH_MAP_DEFAULT_SIZE);
+    assert_ptr_not_equal(hm, NULL);
 
-    node* n1 = hash_map_get_node(fd->words_map, "one", 3);
+    hash_map_init(hm, tmp_file);
+
+    node* n1 = hash_map_get_node(hm, "one", strlen("one"));
     assert_ptr_not_equal(n1, NULL);
     assert_int_equal(n1->val, 1);
 
-    node* n2 = hash_map_get_node(fd->words_map, "two", 3);
+    node* n2 = hash_map_get_node(hm, "два", strlen("два"));
     assert_ptr_not_equal(n2, NULL);
     assert_int_equal(n2->val, 2);
-
-    node* n3 = hash_map_get_node(fd->words_map, "three", 5);
+    
+    node* n3 = hash_map_get_node(hm, "three", strlen("three"));
     assert_ptr_not_equal(n3, NULL);
     assert_int_equal(n3->val, 3);
 
-    remove_frequency_dictionary(&fd);
-    assert_ptr_equal(fd, NULL);
+    node* n4 = hash_map_get_node(hm, "четыре", strlen("четыре"));
+    assert_ptr_not_equal(n4, NULL);
+    assert_int_equal(n4->val, 4);
+
+    remove_hash_map(&hm);
+    assert_ptr_equal(hm, NULL);
+}
+
+static void words_delimeters_test(void **state) { // NOLINT
+    FILE* tmp_file = tmpfile();
+    fputs("one two\nthree,four.five?six!seven;eight", tmp_file);
+    rewind(tmp_file);
+
+    hash_map* hm = create_hash_map(HASH_MAP_DEFAULT_SIZE);
+    hash_map_init(hm, tmp_file);
+
+    node* n1 = hash_map_get_node(hm, "one", 3);
+    assert_ptr_not_equal(n1, NULL);
+    assert_int_equal(n1->val, 1);
+
+    node* n2 = hash_map_get_node(hm, "two", 3);
+    assert_ptr_not_equal(n2, NULL);
+    assert_int_equal(n2->val, 1);
+
+    node* n3 = hash_map_get_node(hm, "three", 5);
+    assert_ptr_not_equal(n3, NULL);
+    assert_int_equal(n3->val, 1);
+
+    node* n4 = hash_map_get_node(hm, "four", 4);
+    assert_ptr_not_equal(n4, NULL);
+    assert_int_equal(n4->val, 1);
+
+    node* n5 = hash_map_get_node(hm, "five", 4);
+    assert_ptr_not_equal(n5, NULL);
+    assert_int_equal(n5->val, 1);
+
+    node* n6 = hash_map_get_node(hm, "six", 3);
+    assert_ptr_not_equal(n6, NULL);
+    assert_int_equal(n6->val, 1);
+
+    node* n7 = hash_map_get_node(hm, "seven", 5);
+    assert_ptr_not_equal(n7, NULL);
+    assert_int_equal(n7->val, 1);
+
+    remove_hash_map(&hm);
 }
 
 int main(void) {
@@ -119,7 +165,8 @@ int main(void) {
         cmocka_unit_test(hash_map_creation_test),
         cmocka_unit_test(hash_map_basic_operations_test),
         cmocka_unit_test(hash_map_rehashing_test),
-        cmocka_unit_test(frequency_dictionary_test)
+        cmocka_unit_test(words_counting_test),
+        cmocka_unit_test(words_delimeters_test)
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }

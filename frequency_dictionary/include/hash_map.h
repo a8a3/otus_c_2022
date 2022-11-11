@@ -3,10 +3,12 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#define HASH_MAP_DEFAULT_SIZE 1024
 #define SYMBOLS_COUNT 256
 typedef uint32_t hash_val;
 
@@ -32,12 +34,12 @@ hash_val pirsons_hash(const char* key, size_t key_len) {
     assert(key);
     assert(key_len > 0);
 
-    hash_val hash_chunk, full_hash = 0;
+    hash_val hash_chunk = 0, full_hash = 0;
     for (size_t i = 0; i < sizeof full_hash; ++i) {
         hash_chunk = symbols[(key[0] + i) % SYMBOLS_COUNT];
 
         for (size_t key_idx = 0; key_idx < key_len; ++key_idx) {
-            hash_chunk = symbols[hash_chunk ^ key[key_idx]];
+            hash_chunk = symbols[(hash_chunk ^ key[key_idx]) % SYMBOLS_COUNT];
         }
         full_hash |= hash_chunk << i * 8;
     }
@@ -191,4 +193,14 @@ void hash_map_rehash(hash_map* m, size_t new_capacity) {
     }
     hash_map_swap_data(m, new_map);
     remove_hash_map(&new_map);
+}
+
+void hash_map_print(const hash_map* hm) {
+    node* n = NULL;
+    for (size_t i = 0; i < hm->capacity; ++i) {
+        n = hm->nodes + i;
+        if (NULL != n->key) {
+            printf("word: %s, count: %d\n", n->key, n->val);
+        }
+    }
 }
