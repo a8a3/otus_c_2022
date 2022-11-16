@@ -49,10 +49,14 @@ const short iso88595_utf8[128] = {
 
 const short* get_characters_set(encodings_e encoding) {
     switch (encoding) {
-        case cp1251: return cp1251_utf8;
-        case koi8r:  return koi8r_utf8;
-        case iso88595: return iso88595_utf8;
-        case undefined: return NULL;
+        case cp1251:
+            return cp1251_utf8;
+        case koi8r:
+            return koi8r_utf8;
+        case iso88595:
+            return iso88595_utf8;
+        case undefined:
+            return NULL;
     }
     return NULL;
 }
