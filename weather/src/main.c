@@ -66,9 +66,11 @@ typedef struct {
 } response;
 
 size_t response_cb(void* data, size_t size, size_t nmemb, void* user_data) {
-    size_t real_size = size * nmemb;
     response* resp = (response*)user_data;
-
+    if (0 == resp->size) {
+        resp->size = 1; // first callback call, add one byte for null terminator
+    }
+    size_t real_size = size * nmemb;
     char* ptr = realloc(resp->data, resp->size + real_size);
     if (!ptr) {
         perror("not enough memory to read response\n");
@@ -133,7 +135,7 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
-    response resp = {.data = malloc(1), .size = 1};
+    response resp = {.data = NULL, .size = 0};
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, response_cb);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void*)&resp);
 
