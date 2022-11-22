@@ -8,10 +8,6 @@ sources = ['src/main.c']
 curl_dep = dependency('libcurl', method: 'pkg-config')
 glib_json_dep = dependency('json-glib-1.0', method: 'pkg-config')
 
-
-
-
-
 executable(
     meson.project_name(), 
     sources,

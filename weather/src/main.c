@@ -67,17 +67,14 @@ typedef struct {
 
 size_t response_cb(void* data, size_t size, size_t nmemb, void* user_data) {
     response* resp = (response*)user_data;
-    if (0 == resp->size) {
-        resp->size = 1; // first callback call, add one byte for null terminator
-    }
     size_t real_size = size * nmemb;
-    char* ptr = realloc(resp->data, resp->size + real_size);
+    char* ptr = realloc(resp->data, resp->size + real_size + 1);  // + 1 for null terminator
     if (!ptr) {
         perror("not enough memory to read response\n");
         return 0;
     }
     resp->data = ptr;
-    memcpy(resp->data + resp->size - 1, data, real_size);
+    memcpy(resp->data + resp->size, data, real_size);
     resp->size += real_size;
     resp->data[resp->size] = '\0';
     return real_size;
