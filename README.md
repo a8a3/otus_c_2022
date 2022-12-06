@@ -12,3 +12,6 @@
 
 - #### weather
   shows current weather in the specified city
+
+- #### logger
+  simple logging library implementation
