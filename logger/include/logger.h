@@ -1,13 +1,14 @@
 #pragma once
+
+#define _POSIX_C_SOURCE 200809L
+
 #include <execinfo.h>
 #include <stdio.h>
 #include <unistd.h>
 
 // simple logging library
-typedef struct {
-    FILE* fd;
-} logger;
-typedef logger* LOGGER;
+struct logger;
+typedef struct logger* LOGGER;
 
 extern LOGGER logger_open_file(const char* file_name);
 extern LOGGER logger_open_stdout();
@@ -18,6 +19,7 @@ typedef enum { info = 0, warning, error, debug } severity;
 
 extern char* severity_as_str(severity s);
 extern char* get_current_time_us();
+extern FILE* logger_get_fd(LOGGER);
 
 #define LOG_IMPL(logger_instance, severity, format, ...)                                                               \
     logger_print(logger_instance, "[%s] %s:%04d [%s] " format "\n", get_current_time_us(), __FILE__, __LINE__,         \
@@ -36,9 +38,10 @@ extern char* get_current_time_us();
         LOG_IMPL(logger_instance, error, format, ##__VA_ARGS__)                                                        \
         void* buf[BACKTRACE_BUF_SZ];                                                                                   \
         int num = backtrace(buf, sizeof buf);                                                                          \
-        fseek(logger_instance->fd, 0, SEEK_END);                                                                       \
-        backtrace_symbols_fd(buf, num, fileno(logger_instance->fd));                                                   \
-        fflush(logger_instance->fd);                                                                                   \
+        FILE* logger_fd = logger_get_fd(logger_instance);                                                              \
+        fseek(logger_fd, 0, SEEK_END);                                                                                 \
+        backtrace_symbols_fd(buf, num, fileno(logger_fd));                                                             \
+        fflush(logger_fd);                                                                                             \
     } while (0)
 
 #ifdef NDEBUG
