@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,18 +39,10 @@ extern void logger_print(LOGGER l, const char* format, ...) {
     va_end(args);
 }
 
+static char* severities_arr[] = {"UNK", "INF", "WRN", "ERR", "DBG"};
 extern char* severity_as_str(severity s) {
-    switch (s) {
-        case info:
-            return "INF";
-        case warning:
-            return "WRN";
-        case error:
-            return "ERR";
-        case debug:
-            return "DBG";
-    }
-    return "UNK";
+    assert(s < last);
+    return severities_arr[(int)(s < last) * s];
 }
 
 extern LOGGER logger_open_file(const char* file_name) {

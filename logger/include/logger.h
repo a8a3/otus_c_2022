@@ -15,7 +15,7 @@ extern LOGGER logger_open_stdout();
 extern void logger_print(LOGGER, const char* format, ...);
 extern void logger_close(LOGGER*);
 
-typedef enum { info = 0, warning, error, debug } severity;
+typedef enum { unknown = 0, info, warning, error, debug, last } severity;
 
 extern char* severity_as_str(severity s);
 extern char* get_current_time_us();
