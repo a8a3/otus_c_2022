@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include "logger.h"
+#include <logger.h>
 
 #define NANOS_IN_MICROS 1000
 #define TIME_BUF_SZ 32

@@ -8,8 +8,8 @@
 
 ### how to build:
 ```
-1. meson setup _build -Ddefault_library=<static/shared/both> -Dbuildtype=<debug/release> -Db_sanitize=<none/address/thread/undefined/memory/leak>
-2. cd _build
+1. meson setup build -Ddefault_library=<static/shared/both> -Dbuildtype=<debug/release> -Db_sanitize=<none/address/thread/undefined/memory/leak>
+2. cd build
 3. meson compile
 ```
 
