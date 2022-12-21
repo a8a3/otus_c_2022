@@ -11,14 +11,14 @@ struct logger;
 typedef struct logger* LOGGER;
 
 extern LOGGER logger_open_file(const char* file_name);
-extern LOGGER logger_open_stdout();
+extern LOGGER logger_open_stdout(void);
 extern void logger_print(LOGGER, const char* format, ...);
 extern void logger_close(LOGGER*);
 
 typedef enum { unknown = 0, info, warning, error, debug, last } severity;
 
 extern char* severity_as_str(severity s);
-extern char* get_current_time_us();
+extern char* get_current_time_us(void);
 extern FILE* logger_get_fd(LOGGER);
 
 #define LOG_IMPL(logger_instance, severity, format, ...)                                                               \

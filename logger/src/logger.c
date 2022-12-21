@@ -24,7 +24,7 @@ static char* current_time_str(char* buf, size_t buf_sz) {
     return buf;
 }
 
-extern char* get_current_time_us() {
+extern char* get_current_time_us(void) {
     static char buf[TIME_BUF_SZ];
     return current_time_str(buf, sizeof buf);
 }
@@ -53,7 +53,7 @@ extern LOGGER logger_open_file(const char* file_name) {
     return l;
 }
 
-extern LOGGER logger_open_stdout() {
+extern LOGGER logger_open_stdout(void) {
     LOGGER l = (LOGGER)malloc(sizeof(struct logger));
     l->fd = fdopen(STDOUT_FILENO, "w");
     return l;
