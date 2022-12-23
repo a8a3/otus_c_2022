@@ -9,7 +9,8 @@ size_t data_length = sizeof data / sizeof data[0];
 
 long* add_element(int val, long* node) {
     long* new_node = (long*)malloc(16);
-    if (NULL == new_node) abort();
+    if (NULL == new_node)
+        abort();
     *new_node = val;
     *(new_node + 1) = (long)node;
     return new_node;
@@ -28,26 +29,24 @@ void print_int(long val) {
     printf(int_format, val);
     fflush(NULL);
 }
-typedef void(*print_int_ptr)(long);
+typedef void (*print_int_ptr)(long);
 
 void m(long* node, print_int_ptr print) {
-    while(node) {
+    while (node) {
         print(*node);
         node = (long*)(*(node + 1));
     }
 }
 
-bool is_odd(long val) {
-    return val & 1;
-}
-typedef bool(*is_odd_ptr)(long val);
+bool is_odd(long val) { return val & 1; }
+typedef bool (*is_odd_ptr)(long val);
 
 long* f(long* src, long* dst, is_odd_ptr filter) {
-    while(src) {
-       if (filter(*src)) {
-           dst = add_element(*src, dst);
-       }
-       src = (long*)(*(src + 1));
+    while (src) {
+        if (filter(*src)) {
+            dst = add_element(*src, dst);
+        }
+        src = (long*)(*(src + 1));
     }
     return dst;
 }
@@ -60,7 +59,7 @@ int main(int argc, char** argv) {
     long* list = NULL;
     do {
         list = add_element(data[num], list);
-    } while(--num >= 0);
+    } while (--num >= 0);
 
     m(list, print_int);
     puts(empty_str);
@@ -72,4 +71,3 @@ int main(int argc, char** argv) {
     remove_list(list);
     remove_list(odd_list);
 }
-
