@@ -7,21 +7,26 @@ const char* empty_str = "";
 long data[] = {4, 8, 15, 16, 23, 42};
 size_t data_length = sizeof data / sizeof data[0];
 
-long* add_element(int val, long* node) {
-    long* new_node = (long*)malloc(16);
+struct node {
+    long val;
+    struct node* next;
+};
+
+struct node* add_element(struct node* n, long val) {
+    struct node* new_node = (struct node*)malloc(sizeof(struct node));
     if (NULL == new_node)
         abort();
-    *new_node = val;
-    *(new_node + 1) = (long)node;
+    new_node->val = val;
+    new_node->next = n;
     return new_node;
 }
 
-void remove_list(long* node) {
-    long* next = NULL;
-    while (node) {
-        next = (long*)(*(node + 1));
-        free(node);
-        node = next;
+void remove_list(struct node* n) {
+    struct node* next = NULL;
+    while (n) {
+        next = n->next;
+        free(n);
+        n = next;
     }
 }
 
@@ -31,40 +36,41 @@ void print_int(long val) {
 }
 typedef void (*print_int_ptr)(long);
 
-void m(long* node, print_int_ptr print) {
-    while (node) {
-        print(*node);
-        node = (long*)(*(node + 1));
+void m(struct node* n, print_int_ptr print) {
+    while (n) {
+        print(n->val);
+        n = n->next;
     }
 }
 
 bool is_odd(long val) { return val & 1; }
 typedef bool (*is_odd_ptr)(long val);
 
-long* f(long* src, long* dst, is_odd_ptr filter) {
+struct node* f(struct node* src, is_odd_ptr filter) {
+    struct node* res = NULL;
     while (src) {
-        if (filter(*src)) {
-            dst = add_element(*src, dst);
+        if (filter(src->val)) {
+            res = add_element(res, src->val);
         }
-        src = (long*)(*(src + 1));
+        src = src->next;
     }
-    return dst;
+    return res;
 }
 
 int main(int argc, char** argv) {
     (void)argc;
-    (void)**argv;
+    (void)argv;
 
     int num = (int)data_length - 1;
-    long* list = NULL;
+    struct node* list = NULL;
     do {
-        list = add_element(data[num], list);
+        list = add_element(list, data[num]);
     } while (--num >= 0);
 
     m(list, print_int);
     puts(empty_str);
 
-    long* odd_list = f(list, NULL, is_odd);
+    struct node* odd_list = f(list, is_odd);
     m(odd_list, print_int);
     puts(empty_str);
 
