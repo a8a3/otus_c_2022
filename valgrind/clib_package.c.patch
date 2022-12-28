@@ -1,0 +1,41 @@
+--- ../../src/common/clib-package.c.origin	2022-12-26 23:03:04.291492154 +0100
++++ ../../src/common/clib-package.c	2022-12-27 10:28:11.320743715 +0100
+@@ -664,6 +664,9 @@
+       json = res->data;
+       _debug("status: %d", res->status);
+       if (!res || !res->ok) {
++        if (res) { 
++            http_get_free(res);
++        }
+         goto download;
+       }
+       log = "fetch";
+@@ -1380,7 +1383,9 @@
+ #ifdef HAVE_PTHREADS
+     pthread_mutex_lock(&lock.mutex);
+ #endif
+-    hash_set(visited_packages, strdup(pkg->name), "t");
++    if (0 == hash_has(visited_packages, pkg->name)) {
++        hash_set(visited_packages, strdup(pkg->name), "t");
++    }
+ #ifdef HAVE_PTHREADS
+     pthread_mutex_unlock(&lock.mutex);
+ #endif
+@@ -1489,7 +1494,7 @@
+       while (--i >= 0) {
+         fetch_package_file_thread_data_t *data = fetchs[i];
+         int *status = 0;
+-        pthread_join(data->thread, (void **)status);
++        pthread_join(data->thread, (void **)&status);
+         free(data);
+         fetchs[i] = NULL;
+ 
+@@ -1519,7 +1524,7 @@
+     fetch_package_file_thread_data_t *data = fetchs[i];
+     int *status = 0;
+ 
+-    pthread_join(data->thread, (void **)status);
++    pthread_join(data->thread, (void **)&status);
+ 
+     (void)pending--;
+     free(data);
