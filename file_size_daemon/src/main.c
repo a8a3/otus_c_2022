@@ -14,6 +14,8 @@
 
 #include <unistd.h>
 
+#include <config.h>
+
 #define PERR_EXIT(msg)                                                                                                 \
     perror(msg);                                                                                                       \
     exit(EXIT_FAILURE);
@@ -23,26 +25,29 @@ void print_help(void) {
            "\tfszd\n"
            "\t\tFile SiZe Daemon\n"
            "OPTIONS:\n"
-           "\t-d, --daemon\n"
-           "\t\tRun in daemon mode\n"
-           "\t-f, --file\n"
-           "\t\tIn normal mode specifies the name of file to print its size\n"
+           "\t-c, --config\n"
+           "\t\tConfiguration file path"
+           "\t-n, --no-daemon\n"
+           "\t\tRun without demonization\n"
            "\t-h, --help\n"
-           "\t\tPrint help\n"
-           "USAGE:\n"
-           "\tfszd -d\n"
-           "\tfszd -f file_name\n");
+           "\t\tPrint help\n");
 }
 
 void print_file_size(const char* file_name) {
     struct stat st;
     if (-1 == stat(file_name, &st)) {
-        PERR_EXIT("stat");
+        fprintf(stderr, "unable to read file: %s", file_name);
     }
     printf("%s size is [%ld] bytes\n", file_name, st.st_size);
 }
 
-void do_work(void) { sleep(60); }
+void do_work(void) {
+    // TODO:
+    // - run loop for awaiting incoming commands on UNIX domain socket;
+    // - handle SIGHUP for refreshing cfg;
+    // - handle some signal for stopping the deamon;
+    print_file_size(cfg_get_file_name());
+}
 
 // by W.Richard Stevens. Advanced Programmming in the UNIX Environment
 void daemonize(const char* proc_name) {
@@ -123,26 +128,26 @@ int main(int argc, char** argv) {
 
     struct option opts[] = {
         {"help", no_argument, 0, 'h'},
-        {"file", required_argument, 0, 'f'},
-        {"daemon", no_argument, 0, 'd'},
+        {"config", required_argument, 0, 'c'},
+        {"no-daemon", no_argument, 0, 'n'},
         {0, 0, 0, 0},
     };
     int opt_char = 0;
-    bool daemon_mode = false;
-    char* file_name = NULL;
+    bool no_daemon_mode = false;
+    char* cfg_file_name = NULL;
 
-    while (-1 != (opt_char = getopt_long(argc, argv, ":hdf:", opts, NULL))) {
+    while (-1 != (opt_char = getopt_long(argc, argv, ":hnc:", opts, NULL))) {
         switch (opt_char) {
             case 'h': {
                 print_help();
                 exit(EXIT_SUCCESS);
             }
-            case 'd': {
-                daemon_mode = true;
+            case 'n': {
+                no_daemon_mode = true;
                 break;
             }
-            case 'f': {
-                file_name = optarg;
+            case 'c': {
+                cfg_file_name = optarg;
                 break;
             }
             case '?': {
@@ -153,15 +158,12 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (daemon_mode) {
+    read_cfg(cfg_file_name);
+    if (!no_daemon_mode) {
         assert(argc > 0);
         daemonize(argv[0]);
     } else {
-        if (NULL == file_name) {
-            fprintf(stderr, "no file name specified\nexit\n");
-            exit(EXIT_FAILURE);
-        }
-        print_file_size(file_name);
+        do_work();
     }
     exit(EXIT_SUCCESS);
 }
