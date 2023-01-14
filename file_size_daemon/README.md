@@ -17,12 +17,11 @@ shows the size of the file specified in configuration
 `fszd -c [config_file_path] [-N no-daemon-mode]`
 
 ### how to test:
-file size request:
-`
-nc -U fszd.socket
-`
-reread configuration request:
-`kill -SIGHUP <pid>`
+file size request:  
+`nc -U fszd.socket`  
 
-daemon stop request:
-`kill -SIGINT <pid>`
+reread configuration request:  
+`kill -SIGHUP <pid>`  
+
+daemon stop request:  
+`kill -SIGINT <pid>`  

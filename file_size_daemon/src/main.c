@@ -63,9 +63,6 @@ long get_file_size(const char* file_name) {
 }
 
 void run(void) {
-    // TODO:
-    // - check memory leaks
-
     int listener = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
     if (listener < 0) {
         syslog(LOG_ERR, "listen socker err");
@@ -78,6 +75,7 @@ void run(void) {
 
     if (bind(listener, (struct sockaddr*)&server, sizeof(struct sockaddr_un)) < 0) {
         close(listener);
+        unlink(SERV_NAME);
         syslog(LOG_ERR, "listen socket bind err");
         return;
     }
