@@ -53,6 +53,7 @@ void read_cfg(const char* cfg_file) {
     }
     read_yaml(fd);
     fclose(fd);
+    syslog(LOG_INFO, "watching for %s", cfg.file_name);
 }
 
 const char* cfg_get_file_name(void) { return cfg.file_name; }

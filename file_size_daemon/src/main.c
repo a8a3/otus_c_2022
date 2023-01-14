@@ -1,20 +1,26 @@
 #define _POSIX_C_SOURCE 200809L
 #include <assert.h>
 #include <bits/getopt_core.h>
-
+#include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/resource.h> // getrlimit
-#include <sys/stat.h>     // stat
+#include <sys/socket.h>
+#include <sys/stat.h> // stat
+#include <sys/types.h>
+#include <sys/un.h>
 #include <syslog.h>
 
 #include <unistd.h>
 
 #include <config.h>
+
+#define SERV_NAME "fszd.socket"
 
 #define PERR_EXIT(msg)                                                                                                 \
     perror(msg);                                                                                                       \
@@ -22,36 +28,97 @@
 
 void print_help(void) {
     printf("NAME:\n"
-           "\tfszd\n"
-           "\t\tFile SiZe Daemon\n"
+           "    fszd\n"
+           "        File SiZe Daemon\n"
            "OPTIONS:\n"
-           "\t-c, --config\n"
-           "\t\tConfiguration file path"
-           "\t-n, --no-daemon\n"
-           "\t\tRun without demonization\n"
-           "\t-h, --help\n"
-           "\t\tPrint help\n");
+           "    -c, --config\n"
+           "        Configuration file path"
+           "    -N, --no-daemon\n"
+           "        Run without demonization\n"
+           "    -h, --help\n"
+           "        Print help\n");
 }
 
-void print_file_size(const char* file_name) {
+static volatile sig_atomic_t int_received = 0;
+static volatile sig_atomic_t hup_received = 0;
+char* cfg_file_name = NULL;
+
+void sig_handler(int sig) {
+    if (SIGINT == sig) {
+        int_received = 1;
+        return;
+    }
+    if (SIGHUP == sig) {
+        hup_received = 1;
+        return;
+    }
+}
+
+long get_file_size(const char* file_name) {
     struct stat st;
     if (-1 == stat(file_name, &st)) {
         fprintf(stderr, "unable to read file: %s", file_name);
     }
-    printf("%s size is [%ld] bytes\n", file_name, st.st_size);
+    return st.st_size;
 }
 
-void do_work(void) {
+void run(void) {
     // TODO:
-    // - run loop for awaiting incoming commands on UNIX domain socket;
-    // - handle SIGHUP for refreshing cfg;
-    // - handle some signal for stopping the deamon;
-    print_file_size(cfg_get_file_name());
+    // - check memory leaks
+
+    int listener = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
+    if (listener < 0) {
+        syslog(LOG_ERR, "listen socker err");
+        return;
+    }
+
+    struct sockaddr_un server;
+    server.sun_family = AF_UNIX;
+    strcpy(server.sun_path, SERV_NAME);
+
+    if (bind(listener, (struct sockaddr*)&server, sizeof(struct sockaddr_un)) < 0) {
+        close(listener);
+        syslog(LOG_ERR, "listen socket bind err");
+        return;
+    }
+
+    if (listen(listener, 8) < 0) {
+        close(listener);
+        unlink(SERV_NAME);
+        syslog(LOG_ERR, "listen err");
+        return;
+    }
+
+    syslog(LOG_INFO, "start listeng on %s", server.sun_path);
+    int client = 0;
+    char buf[1024];
+    while (0 == int_received) {
+        if (-1 == (client = accept(listener, 0, 0))) {
+            if (EAGAIN == errno || EWOULDBLOCK == errno) {
+                continue; // while
+            }
+            syslog(LOG_ERR, "client accep err");
+            break; // while
+        }
+        const char* file_path = cfg_get_file_name();
+        memset(buf, 0, sizeof(buf));
+        sprintf(buf, "%s size is [%ld] bytes\n", file_path, get_file_size(file_path));
+
+        send(client, buf, strlen(buf), 0);
+        close(client);
+
+        if (1 == hup_received) {
+            hup_received = 0;
+            read_cfg(cfg_file_name);
+        }
+    }
+    close(listener);
+    unlink(SERV_NAME);
 }
 
 // by W.Richard Stevens. Advanced Programmming in the UNIX Environment
-void daemonize(const char* proc_name) {
-    umask(0); // clear file creation mask(not going to create new files)
+void daemonize(void) {
+    umask(0); // clear file creation mask
 
     struct rlimit rl;
     if (getrlimit(RLIMIT_NOFILE, &rl) < 0) { // get max num of file descriptors
@@ -65,37 +132,19 @@ void daemonize(const char* proc_name) {
     //   leader(prerequisite for the setsid call below)
     pid_t pid;
     if ((pid = fork()) < 0) {
-        PERR_EXIT("1st fork");
+        PERR_EXIT("1st fork failed");
+    } else if (pid > 0) {
+        exit(EXIT_SUCCESS);
     }
 
-    if (0 != pid) { // return if parent
-        return;
-    }
     setsid(); // become a session leader to lose controlling TTY
 
-    // ensure future opens won't allocate controlling TTYs
-    struct sigaction sa;
-    sa.sa_handler = SIG_IGN;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-
-    if (sigaction(SIGHUP, &sa, NULL) < 0) {
-        PERR_EXIT("sigaction");
-    }
-
     // 2nd fork
-    // after fork call daemon is no longer a session leader
-    if ((pid = fork() < 0)) {
-        PERR_EXIT("2nd fork");
-    }
-
-    if (0 != pid) { // return if parent
-        return;
-    }
-
-    // change current directory to the root- prevent file systems from being unmounted
-    if (chdir("/") < 0) {
-        PERR_EXIT("chdir");
+    // after 2nd fork call daemon is no longer a session leader
+    if ((pid = fork()) < 0) {
+        PERR_EXIT("2nd fork failed");
+    } else if (pid > 0) {
+        exit(EXIT_SUCCESS);
     }
 
     // close all open FDs
@@ -108,20 +157,10 @@ void daemonize(const char* proc_name) {
     }
 
     // attach FDs 0, 1, 2 to /dev/null
-    int fd0 = open("/dev/null", O_RDWR);
-    int fd1 = dup(0);
-    int fd2 = dup(0);
-
-    // initialize system log
-    openlog(proc_name, LOG_CONS, LOG_DAEMON);
-    if (0 != fd0 || 1 != fd1 || 2 != fd2) {
-        syslog(LOG_ERR, "unexpected file descriptors: %d, %d, %d", fd0, fd1, fd2);
-        exit(EXIT_FAILURE);
-    }
-    syslog(LOG_INFO, "%s started", proc_name);
-    do_work();
-    syslog(LOG_INFO, "%s stopped", proc_name);
-    closelog();
+    int daemon_in = open("/dev/null", O_RDWR);
+    assert(0 == daemon_in);
+    dup(0); // daemon out
+    dup(0); // daemon err
 }
 
 int main(int argc, char** argv) {
@@ -129,20 +168,19 @@ int main(int argc, char** argv) {
     struct option opts[] = {
         {"help", no_argument, 0, 'h'},
         {"config", required_argument, 0, 'c'},
-        {"no-daemon", no_argument, 0, 'n'},
+        {"no-daemon", no_argument, 0, 'N'},
         {0, 0, 0, 0},
     };
     int opt_char = 0;
     bool no_daemon_mode = false;
-    char* cfg_file_name = NULL;
 
-    while (-1 != (opt_char = getopt_long(argc, argv, ":hnc:", opts, NULL))) {
+    while (-1 != (opt_char = getopt_long(argc, argv, ":hNc:", opts, NULL))) {
         switch (opt_char) {
             case 'h': {
                 print_help();
                 exit(EXIT_SUCCESS);
             }
-            case 'n': {
+            case 'N': {
                 no_daemon_mode = true;
                 break;
             }
@@ -157,13 +195,24 @@ int main(int argc, char** argv) {
             }
         }
     }
-
-    read_cfg(cfg_file_name);
     if (!no_daemon_mode) {
-        assert(argc > 0);
-        daemonize(argv[0]);
-    } else {
-        do_work();
+        daemonize();
     }
+
+    struct sigaction sa;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    sa.sa_handler = sig_handler;
+    if (-1 == sigaction(SIGHUP, &sa, NULL) || -1 == sigaction(SIGINT, &sa, NULL)) {
+        PERR_EXIT("sigaction");
+    }
+
+    assert(argc > 0);
+    openlog(argv[0], LOG_PID | LOG_CONS, LOG_DAEMON);
+    syslog(LOG_INFO, "started");
+    read_cfg(cfg_file_name);
+    run();
+    syslog(LOG_INFO, "stopped");
+    closelog();
     exit(EXIT_SUCCESS);
 }

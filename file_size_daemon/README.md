@@ -1,15 +1,28 @@
-# fszd. File SiZe Daemon.
-shows size of specified file in bytes
+# fszd. File SiZe Daemon
+shows the size of the file specified in configuration
+
+### features:
+- daemon mode/regular app mode
+- YAML cfg file
+- awaits incoming requests on `fszd.socket` UNIX domain socket
+- rereads configuration on SIGHUP signal
+- stops on SIGINT signal
 
 ### how to build:
-1. `meson setup _build .`
-2. `meson compile -C _build`
-3. `ninja -C _build clang-format`
-4. `ninja -C _build clang-tidy`
+1. `meson setup build .`
+2. `meson compile -C build`
+3. `ninja -C build clang-format`
 
 ### how to run:
-`fszd [-d daemon-mode]`
-`fszd <file name>`
+`fszd -c [config_file_path] [-N no-daemon-mode]`
 
-### print help
-`fszd -h`
+### how to test:
+file size request:
+`
+nc -U fszd.socket
+`
+reread configuration request:
+`kill -SIGHUP <pid>`
+
+daemon stop request:
+`kill -SIGINT <pid>`
