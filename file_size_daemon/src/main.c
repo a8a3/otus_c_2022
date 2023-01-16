@@ -20,7 +20,7 @@
 
 #include <config.h>
 
-#define SERV_NAME "fszd.socket"
+#define DEFAULT_CFG_FILE "fszd.yaml"
 
 #define PERR_EXIT(msg)                                                                                                 \
     perror(msg);                                                                                                       \
@@ -41,7 +41,7 @@ void print_help(void) {
 
 static volatile sig_atomic_t int_received = 0;
 static volatile sig_atomic_t hup_received = 0;
-char* cfg_file_name = NULL;
+char* cfg_file_name = DEFAULT_CFG_FILE;
 
 void sig_handler(int sig) {
     if (SIGINT == sig) {
@@ -57,7 +57,7 @@ void sig_handler(int sig) {
 long get_file_size(const char* file_name) {
     struct stat st;
     if (-1 == stat(file_name, &st)) {
-        fprintf(stderr, "unable to read file: %s", file_name);
+        syslog(LOG_ERR, "unable to read file: %s", file_name);
     }
     return st.st_size;
 }
@@ -68,21 +68,21 @@ void run(void) {
         syslog(LOG_ERR, "listen socker err");
         return;
     }
-
+    const char* sock_name = cfg_get_sock_name();
     struct sockaddr_un server;
     server.sun_family = AF_UNIX;
-    strcpy(server.sun_path, SERV_NAME);
+    strcpy(server.sun_path, sock_name);
 
     if (bind(listener, (struct sockaddr*)&server, sizeof(struct sockaddr_un)) < 0) {
         close(listener);
-        unlink(SERV_NAME);
+        unlink(sock_name);
         syslog(LOG_ERR, "listen socket bind err");
         return;
     }
 
     if (listen(listener, 8) < 0) {
         close(listener);
-        unlink(SERV_NAME);
+        unlink(sock_name);
         syslog(LOG_ERR, "listen err");
         return;
     }
@@ -111,7 +111,7 @@ void run(void) {
         }
     }
     close(listener);
-    unlink(SERV_NAME);
+    unlink(sock_name);
 }
 
 // by W.Richard Stevens. Advanced Programmming in the UNIX Environment
@@ -172,8 +172,12 @@ int main(int argc, char** argv) {
     int opt_char = 0;
     bool no_daemon_mode = false;
 
-    while (-1 != (opt_char = getopt_long(argc, argv, ":hNc:", opts, NULL))) {
+    while (-1 != (opt_char = getopt_long(argc, argv, ":c:hN", opts, NULL))) {
         switch (opt_char) {
+            case 'c': {
+                cfg_file_name = optarg;
+                break;
+            }
             case 'h': {
                 print_help();
                 exit(EXIT_SUCCESS);
@@ -182,13 +186,13 @@ int main(int argc, char** argv) {
                 no_daemon_mode = true;
                 break;
             }
-            case 'c': {
-                cfg_file_name = optarg;
-                break;
-            }
             case '?': {
                 fprintf(stderr, "unknown option: '%c'\n\n", optopt);
                 print_help();
+                exit(EXIT_FAILURE);
+            }
+            case ':': {
+                fprintf(stderr, "required arg missed: '%c'\n\n", optopt);
                 exit(EXIT_FAILURE);
             }
         }

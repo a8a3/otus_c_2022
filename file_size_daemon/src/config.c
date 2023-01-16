@@ -7,9 +7,12 @@
 #include <yaml.h>
 
 #define FILE_NAME_TOKEN "file_name"
+#define SOCK_NAME_TOKEN "sock_name"
+#define SOCK_NAME_LEN 64
 
 typedef struct {
     char file_name[PATH_MAX + 1];
+    char sock_name[SOCK_NAME_LEN];
 } fszd_cfg_s;
 
 fszd_cfg_s cfg;
@@ -24,6 +27,7 @@ void read_yaml(FILE* fd) {
     yaml_token_t token;
     int token_type = 0;
     bool read_file_name = false;
+    bool read_sock_name = false;
     do {
         yaml_parser_scan(&parser, &token);
         token_type = token.type;
@@ -32,8 +36,11 @@ void read_yaml(FILE* fd) {
                 if (read_file_name) {
                     strncpy(cfg.file_name, (char*)token.data.scalar.value, PATH_MAX);
                     read_file_name = false;
+                } else if (read_sock_name) {
+                    strncpy(cfg.sock_name, (char*)token.data.scalar.value, SOCK_NAME_LEN);
                 }
                 read_file_name = (0 == strcmp((char*)token.data.scalar.value, FILE_NAME_TOKEN));
+                read_sock_name = (0 == strcmp((char*)token.data.scalar.value, SOCK_NAME_TOKEN));
                 break;
             }
             default:; // do nothing
@@ -57,3 +64,4 @@ void read_cfg(const char* cfg_file) {
 }
 
 const char* cfg_get_file_name(void) { return cfg.file_name; }
+const char* cfg_get_sock_name(void) { return cfg.sock_name; }
