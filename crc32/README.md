@@ -1,8 +1,8 @@
 # crc32
-calculates CRC-32 sum of passed file
+calculates CRC-32 sum of input file
 
 ### how to build:
-1. `meson setup build .`
+1. `meson setup build`
 2. `meson compile -C build`
 3. `ninja -C build clang-format`
 

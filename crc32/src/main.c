@@ -1,8 +1,12 @@
 #define _POSIX_C_SOURCE 200809L
+#include <fcntl.h>
 #include <getopt.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 void print_usage(void) { printf("USAGE:\n    crc32 -f <file name>\n"); }
 
@@ -48,18 +52,44 @@ const uint32_t crc32_tab[] = {
     0x24b4a3a6, 0xbad03605, 0xcdd70693, 0x54de5729, 0x23d967bf, 0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94,
     0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d};
 
-uint32_t crc32(const void* buf, size_t size) {
+uint32_t crc32(const void* buf, size_t size, uint32_t crc) {
     const uint8_t* p = buf;
-    uint32_t crc = ~0U;
     while (size--) {
         crc = crc32_tab[(crc ^ *p++) & 0xFF] ^ (crc >> 8);
     }
-    return crc ^ ~0U;
+    return crc;
 }
 
+#define CHUNK_SZ (1024 * 1024 * 1024)
+
 void print_crc32(char* file_name) {
-    
-    printf("%s CRC-32 is: 0x%08x\n", file_name, crc32(NULL, 0));
+    int fd = open(file_name, O_RDONLY);
+    if (fd < 0) {
+        fprintf(stderr, "unable to open file: %s\n", file_name);
+        exit(EXIT_FAILURE);
+    }
+    struct stat f_st;
+    if (fstat(fd, &f_st) < 0) {
+        fprintf(stderr, "unable to get file [%s] stat\n", file_name);
+        close(fd);
+        exit(EXIT_FAILURE);
+    }
+    uint32_t crc = ~0U;
+    long bytes_readed = 0;
+    long read_by = CHUNK_SZ;
+
+    while (bytes_readed < f_st.st_size) {
+        if (f_st.st_size - bytes_readed < CHUNK_SZ) {
+            read_by = f_st.st_size - bytes_readed;
+        }
+        void* ptr = mmap(0, read_by, PROT_READ, MAP_SHARED, fd, bytes_readed);
+        crc = crc32(ptr, read_by, crc);
+        munmap(ptr, read_by);
+        bytes_readed += read_by;
+    }
+    crc ^= ~0U;
+    close(fd);
+    printf("[%s] CRC-32 sum: [0x%08x]\n", file_name, crc);
 }
 
 int main(int argc, char** argv) {
