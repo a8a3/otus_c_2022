@@ -52,10 +52,9 @@ const uint32_t crc32_tab[] = {
     0x24b4a3a6, 0xbad03605, 0xcdd70693, 0x54de5729, 0x23d967bf, 0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94,
     0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d};
 
-uint32_t crc32(const void* buf, size_t size, uint32_t crc) {
-    const uint8_t* p = buf;
+uint32_t crc32(uint8_t* buf, size_t size, uint32_t crc) {
     while (size--) {
-        crc = crc32_tab[(crc ^ *p++) & 0xFF] ^ (crc >> 8);
+        crc = crc32_tab[(crc ^ *buf++) & 0xFF] ^ (crc >> 8);
     }
     return crc;
 }
@@ -65,12 +64,12 @@ uint32_t crc32(const void* buf, size_t size, uint32_t crc) {
 void print_crc32(char* file_name) {
     int fd = open(file_name, O_RDONLY);
     if (fd < 0) {
-        fprintf(stderr, "unable to open file: %s\n", file_name);
+        perror("unable to open input file\n");
         exit(EXIT_FAILURE);
     }
     struct stat f_st;
     if (fstat(fd, &f_st) < 0) {
-        fprintf(stderr, "unable to get file [%s] stat\n", file_name);
+        perror("unable to get input file stat\n");
         close(fd);
         exit(EXIT_FAILURE);
     }
@@ -78,14 +77,15 @@ void print_crc32(char* file_name) {
     long bytes_readed = 0;
     long read_by = CHUNK_SZ;
 
+    uint8_t* ptr = (uint8_t*)mmap(0, f_st.st_size, PROT_READ, MAP_SHARED, fd, 0);
     while (bytes_readed < f_st.st_size) {
         if (f_st.st_size - bytes_readed < CHUNK_SZ) {
             read_by = f_st.st_size - bytes_readed;
         }
-        void* ptr = mmap(0, read_by, PROT_READ, MAP_SHARED, fd, bytes_readed);
         crc = crc32(ptr, read_by, crc);
         munmap(ptr, read_by);
         bytes_readed += read_by;
+        ptr += read_by;
     }
     crc ^= ~0U;
     close(fd);
@@ -94,7 +94,7 @@ void print_crc32(char* file_name) {
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        fprintf(stderr, "no file specified\n");
+        perror("no file specified\n");
         print_usage();
         exit(EXIT_FAILURE);
     }
