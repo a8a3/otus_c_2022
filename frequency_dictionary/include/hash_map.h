@@ -10,6 +10,8 @@
 
 #define HASH_MAP_DEFAULT_SIZE 1024
 #define SYMBOLS_COUNT 256
+#define REHASH_FACTOR 0.33f
+
 typedef uint32_t hash_val;
 
 // randomly placed 0-255 values
@@ -130,7 +132,7 @@ node* hash_map_insert(hash_map* m, const char* key, size_t key_len) {
         candidate = m->nodes + m->hash_func(key, key_len, m->capacity - 1, attempt_idx);
         assert(candidate);
         if (NULL == candidate->key) { // node is free to use
-            if (m->size < (m->capacity >> 1)) {
+            if (m->size < (size_t)((float)m->capacity * REHASH_FACTOR)) {
                 char* new_key = (char*)malloc(key_len + 1);
 
                 if (NULL == new_key) {
@@ -157,6 +159,7 @@ node* hash_map_insert(hash_map* m, const char* key, size_t key_len) {
 
             if (attempt_idx > m->capacity) {
                 perror("unable to get a free hash-map node");
+                fprintf(stderr, "attempts: %lu\n", attempt_idx);
                 return NULL;
             }
         }
