@@ -10,6 +10,6 @@ executable(
     meson.project_name(), 
     sources,
     include_directories: ['../frequency_dictionary/include', 'include'],
-    c_args: ['-Wall', '-Wextra', '-Wpedantic']
+    c_args: ['-Wall', '-Wextra', '-Wpedantic', '-Werror']
 )
 

@@ -35,14 +35,6 @@ void print_help(void) {
            "        Print help\n");
 }
 
-typedef char** _Atomic atomic_iter;
-
-char** files_list_create(char* dir_name, size_t* files_count) {
-    DIR* dp = opendir(dir_name);
-    if (NULL == dp) {
-        perror(dir_name);
-        exit(EXIT_FAILURE);
-    }
 // C standard doesn't guarantee that all-bits-zero is the NULL pointer constant,
 // explicitly nullify each pointer instead zeroing by memset
 #define NULLIFY_PTRS(ptrs_arr, ptrs_arr_sz)                                                                            \
@@ -51,6 +43,14 @@ char** files_list_create(char* dir_name, size_t* files_count) {
             (ptrs_arr)[i] = NULL;                                                                                      \
     } while (false)
 
+typedef char** _Atomic atomic_iter;
+
+char** files_list_create(char* dir_name, size_t* files_count) {
+    DIR* dp = opendir(dir_name);
+    if (NULL == dp) {
+        perror(dir_name);
+        exit(EXIT_FAILURE);
+    }
     size_t files_list_sz = FILES_LIST_INIT_SZ;
     char** res = malloc((files_list_sz + 1) * sizeof(char*));
     assert(res);
@@ -221,7 +221,12 @@ void get_stat(char* dir_name, int num_threads) {
     num_threads = MIN((size_t)num_threads, files_count);
 
     worker_param** params = malloc(sizeof(worker_param*) * num_threads);
-    pthread_t* workers = (pthread_t*)malloc(sizeof(pthread_t) * num_threads);
+    assert(params);
+    NULLIFY_PTRS(params, (size_t)num_threads);
+
+    pthread_t* workers = malloc(sizeof(pthread_t) * num_threads);
+    assert(workers);
+    memset(workers, 0, sizeof(pthread_t) * num_threads);
     for (int i = 0; i < num_threads; ++i) {
         params[i] = worker_param_create(&files_iter);
         thrd_create(workers + i, worker_func, params[i]);
