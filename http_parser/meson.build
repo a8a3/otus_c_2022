@@ -5,12 +5,11 @@ project(
 )
 
 sources = ['src/main.c']
-include = include_directories('../frequency_dictionary/include')
 
 executable(
     meson.project_name(), 
     sources,
-    include_directories: include,
+    include_directories: ['../frequency_dictionary/include', 'include'],
     c_args: ['-Wall', '-Wextra', '-Wpedantic']
 )
 
