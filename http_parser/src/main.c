@@ -69,13 +69,13 @@ char** files_list_create(char* dir_name, size_t* files_count) {
             assert(res[f_idx]);
 
             entry_pos = 0;
-            strcpy(res[f_idx] + entry_pos, dir_name);
+            strncpy(res[f_idx] + entry_pos, dir_name, dir_name_len + 1);
             entry_pos += dir_name_len;
 
-            strcpy(res[f_idx] + entry_pos, "/");
+            res[f_idx][entry_pos] = '/';
             entry_pos += 1;
 
-            strcpy(res[f_idx] + entry_pos, entry->d_name);
+            strncpy(res[f_idx] + entry_pos, entry->d_name, entry_name_len + 1);
             entry_pos += entry_name_len;
             res[f_idx][entry_pos] = '\0';
 

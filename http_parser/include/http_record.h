@@ -9,7 +9,6 @@
 
 #define URL_DEF_SZ 256
 #define REF_DEF_SZ 256
-#
 
 typedef struct {
     char* url;
@@ -20,6 +19,8 @@ typedef struct {
 } http_record;
 
 void http_record_remove(http_record** record) {
+    if (NULL == record || NULL == *record)
+        return;
     free((*record)->url);
     free((*record)->referer);
     free(*record);
@@ -33,12 +34,12 @@ http_record* http_rec_create(void) {
     rec->url = malloc(URL_DEF_SZ);
     assert(rec->url);
     memset(rec->url, 0, URL_DEF_SZ);
-    rec->url_sz = URL_DEF_SZ;
+    rec->url_sz = URL_DEF_SZ - 1;
 
     rec->referer = malloc(REF_DEF_SZ);
     assert(rec->referer);
     memset(rec->referer, 0, REF_DEF_SZ);
-    rec->referer_sz = REF_DEF_SZ;
+    rec->referer_sz = REF_DEF_SZ - 1;
 
     rec->bytes = 0;
     return rec;
@@ -54,7 +55,7 @@ int http_record_get(char* line, http_record** out_rec) {
     http_record* rec = *out_rec;
 #define CHECK_TOKEN(chr, str)                                                                                          \
     do {                                                                                                               \
-        if (NULL == chr) {                                                                                             \
+        if (NULL == (chr)) {                                                                                           \
             return 1;                                                                                                  \
         }                                                                                                              \
     } while (0)
