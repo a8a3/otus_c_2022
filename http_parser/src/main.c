@@ -1,6 +1,6 @@
 #include <linux/limits.h>
-#define _DEFAULT_SOURCE
-#define _POSIX_C_SOURCE 200809L
+#define _DEFAULT_SOURCE          // NOLINT
+#define _POSIX_C_SOURCE 200809L  // NOLINT
 
 #include <assert.h>
 #include <dirent.h>
@@ -102,7 +102,7 @@ void files_list_remove(atomic_iter files_list) {
         free(file);
     }
     free(files_list);
-    files_list = NULL;
+    files_list = NULL; // NOLINT
 }
 
 typedef struct {
@@ -134,18 +134,17 @@ void file_data_read(char* file_name, hash_map* url, hash_map* referer) {
         exit(EXIT_FAILURE);
     }
 
-    ssize_t read;
     size_t len;
     char* line = NULL;
     http_record* record = NULL;
-    while (-1 != (read = getline(&line, &len, fd))) {
+    while (-1 != getline(&line, &len, fd)) {
         if (1 == http_record_get(line, &record) || NULL == record)
             continue;
 
         if (record->url_sz > 0) {
             node* url_n = hash_map_insert(url, record->url, record->url_sz);
             assert(url_n);
-            url_n->val += record->bytes;
+            url_n->val += (int)record->bytes;
         }
 
         if (record->referer_sz > 0) {
