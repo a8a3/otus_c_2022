@@ -1,11 +1,12 @@
 #include <linux/limits.h>
-#define _DEFAULT_SOURCE          // NOLINT
-#define _POSIX_C_SOURCE 200809L  // NOLINT
+#define _DEFAULT_SOURCE         // NOLINT
+#define _POSIX_C_SOURCE 200809L // NOLINT
 
 #include <assert.h>
 #include <dirent.h>
 #include <getopt.h>
 #include <pthread.h>
+
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -160,12 +161,20 @@ void file_data_read(char* file_name, hash_map* url, hash_map* referer) {
 
 int worker_func(void* data) {
     worker_param* wp = (worker_param*)data;
-    char* file;
-    // it doesn't work-> *atomic_fetch_add_explicit(wp->files_iter, 1, memory_order_acq_rel)
-    while ((file = *(*wp->files_iter)++)) {
-        printf("%s file is being processed by %lu thread\n", file, pthread_self());
-        file_data_read(file, wp->url, wp->referer);
-    }
+    char** files_iter;
+    do {
+        files_iter = atomic_load_explicit(wp->files_iter, memory_order_acquire);
+        while (*files_iter && !atomic_compare_exchange_weak_explicit(wp->files_iter, &files_iter, files_iter + 1,
+                                                                     memory_order_release, memory_order_relaxed))
+            ;
+
+        if (NULL == *files_iter) {
+            break; // while
+        }
+        printf("%s file is being processed by %lu thread\n", *files_iter, pthread_self());
+        file_data_read(*files_iter, wp->url, wp->referer);
+    } while (true);
+
     thrd_exit(0);
 }
 

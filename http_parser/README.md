@@ -14,4 +14,4 @@ parses http server logs in the specified directory, in several threads (1 file p
 `valgrind --leak-check=yes --track-origins=yes ./http_parser -d <dir_path> -t <num_threads>`
 
 #### concurrency issues:
-`valgrind --tool=helgrind http_parser -d <dir_path> -t <num_threads>`
+`valgrind --tool=helgrind ./http_parser -d <dir_path> -t <num_threads>`
