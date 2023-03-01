@@ -2,6 +2,7 @@
 
 #include <arpa/inet.h>
 #include <assert.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include <netinet/in.h>
@@ -11,13 +12,16 @@
 #include <string.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #define MAX_CONN 32
 #define MAX_EVENTS 64
-#define IP_BUF_SZ 16
-#define READ_SZ 8
+#define FULL_FILE_NAME_SZ 256
+#define READ_SZ 4096 // assumed server doesn't expect more that 4K bytes request
 #define MIN(a, b) (a) < (b) ? (a) : (b)
+#define DEFAULT_DIR "."
+#define DEFAULT_ADDR "127.0.0.1:8080"
 
 void print_help(void) {
     printf("NAME:\n"
@@ -33,6 +37,7 @@ void print_help(void) {
 }
 
 bool init_ip_addr(const char* addr_str, struct sockaddr_in* addr) {
+#define IP_BUF_SZ 16
     char ip[IP_BUF_SZ] = {0};
 
     // expected format example: 127.0.0.1:8080
@@ -62,10 +67,41 @@ bool epoll_add(int epoll_fd, int fd, uint32_t events) {
     return -1 != epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event);
 }
 
-void run(const char* dir_name, const char* listen_addr) {
-    // TODO:
-    (void)dir_name;
+char* get_requested_file_name(const char* buf) {
+    // expected format of custom header with file name:
+    // file:<file_name>
+#define FILE_HDR "file:"
+#define FILE_NAME_BUF_SZ 256
+    char* file_begin = strstr(buf, FILE_HDR);
+    if (!file_begin) {
+        perror("no file header passed");
+        return NULL;
+    }
+    file_begin += strlen(FILE_HDR);
+    char* file_end = strchr(file_begin, '\r');
+    int file_name_len = MIN(FILE_NAME_BUF_SZ - 1, file_end - file_begin);
 
+    static char file_name_buf[FILE_NAME_BUF_SZ];
+    strncpy(file_name_buf, file_begin, file_name_len);
+    file_name_buf[file_name_len] = '\0';
+    return file_name_buf;
+}
+
+//bool is_file_exists(const char* file_name) {
+//    struct stat st;
+//    return (0 == stat(file_name, &st));
+//}
+
+int errno_2http_status(void) {
+    switch(errno) {
+        case 2: return 404;  // no file or directory
+        case 13: return 403; // permission denied 
+    }
+    return -1;
+}
+
+
+void run(const char* dir_name, const char* listen_addr) {
     struct sockaddr_in srv_addr, client_addr = {0};
     if (!init_ip_addr(listen_addr, &srv_addr)) {
         perror("bad listening address specified");
@@ -95,7 +131,7 @@ void run(const char* dir_name, const char* listen_addr) {
         exit(EXIT_FAILURE);
     }
 
-    if (!epoll_add(epoll_fd, listener, EPOLLIN | EPOLLOUT)) {
+    if (!epoll_add(epoll_fd, listener, EPOLLIN | EPOLLOUT | EPOLLET)) {
         close(listener);
         perror("epoll_ctl_add");
         exit(EXIT_FAILURE);
@@ -104,7 +140,9 @@ void run(const char* dir_name, const char* listen_addr) {
     struct epoll_event events[MAX_EVENTS];
     socklen_t client_addr_sz = sizeof(client_addr);
     int client;
-    char client_ip_buf[IP_BUF_SZ];
+    ssize_t rd;
+    char full_file_name[256];
+    char buf[READ_SZ];
 
     for (;;) {
         fd_ready = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
@@ -113,18 +151,67 @@ void run(const char* dir_name, const char* listen_addr) {
             // check if new client wants to connect
             if (listener == events[i].data.fd) {
                 client = accept(listener, (struct sockaddr*)&client_addr, &client_addr_sz);
-                inet_ntop(AF_INET, (char*)&client_addr.sin_addr, client_ip_buf, sizeof(client_addr));
-                printf("new client accepted: %s:%d\n", client_ip_buf, ntohs(client_addr.sin_port));
-                set_nonblocking(client);
+                inet_ntop(AF_INET, (char*)&client_addr.sin_addr, buf, sizeof(client_addr));
+                printf("new client accepted: %s:%d\n", buf, ntohs(client_addr.sin_port));
+                if (!set_nonblocking(client)) {
+                    perror("unable to make non-blocking client");
+                    continue;
+                }
 
-                if (!epoll_add(epoll_fd, client, EPOLLIN | EPOLLHUP | EPOLLRDHUP)) {
+                if (!epoll_add(epoll_fd, client, EPOLLIN | EPOLLET | EPOLLHUP | EPOLLRDHUP)) {
                     perror("unable to add client to epoll");
+                    continue;
+                }
+                // client's incoming request
+            } else if (events[i].events & EPOLLIN) {
+                for (;;) {
+                    memset(buf, 0, READ_SZ);
+                    rd = read(events[i].data.fd, buf, READ_SZ - 1);
+                    if (rd <= 0) {
+                        break; // for
+                    }
+                    buf[READ_SZ - 1] = '\0';
+                    printf("received from client:\n%s\n", buf);
+
+                    char* requested_file = get_requested_file_name(buf);
+                    memset(full_file_name, 0, sizeof(full_file_name));
+                    snprintf(full_file_name, FULL_FILE_NAME_SZ, "%s/%s", dir_name, requested_file);
+
+                    printf("requested file: [%s]\n", full_file_name);
+
+                    // TODO: check:
+                    // 1. if file exists
+                    // 2. if proc has permissions to read
+                    // 3. use stat call for that...
+//                    FILE* fd = fopen(full_file_name, "r"); 
+//                    if (!is_file_exists(full_file_name)) {
+//                        // TODO: no file response
+//                        printf("no file: %s\n", full_file_name);
+//                        continue;
+//                    }
+
+                    // TODO: read in binary mode
+                    int fd = open(full_file_name, O_RDONLY);
+                    if (-1 == fd) {
+                        perror("open");
+                        printf("errno: %d\n", errno);
+                        
+                        int http_status = errno_2http_status();
+                        if (-1 == http_status) {
+                            // send "internal server error?"
+                        }
+
+                        continue;
+                    }
+                    
+                    printf("%s is opened\n", full_file_name);
+                    close(fd);
                 }
             } else {
-                // TODO
+                printf("unexpected event: %u", events[i].events);
             }
 
-            // check if client wants to disconnect
+            // check if existing client wants to disconnect
             if (events[i].events & (EPOLLHUP | EPOLLRDHUP)) {
                 printf("client disconnected\n");
                 epoll_ctl(epoll_fd, EPOLL_CTL_DEL, events[i].data.fd, NULL);
@@ -143,8 +230,8 @@ int main(int argc, char** argv) {
         {"address", required_argument, 0, 'a'},
         {0, 0, 0, 0},
     };
-    char* dir_name = ".";
-    char* listen_addr = "127.0.0.1:8080";
+    char* dir_name = DEFAULT_ADDR;
+    char* listen_addr = DEFAULT_DIR;
     int opt_char = 0;
 
     while (-1 != (opt_char = getopt_long(argc, argv, ":d:a:h", opts, NULL))) {
