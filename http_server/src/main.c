@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
+#include <sys/sendfile.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -22,6 +23,7 @@
 #define MIN(a, b) (a) < (b) ? (a) : (b)
 #define DEFAULT_DIR "."
 #define DEFAULT_ADDR "127.0.0.1:8080"
+#define RESPONSE_HDR_SZ 1024
 
 void print_help(void) {
     printf("NAME:\n"
@@ -87,24 +89,87 @@ char* get_requested_file_name(const char* buf) {
     return file_name_buf;
 }
 
-//bool is_file_exists(const char* file_name) {
-//    struct stat st;
-//    return (0 == stat(file_name, &st));
-//}
+typedef struct {
+    int code;
+    const char* text;
+} http_status;
 
-int errno_2http_status(void) {
-    switch(errno) {
-        case 2: return 404;  // no file or directory
-        case 13: return 403; // permission denied 
+http_status* errno_2http_status(int err) {
+    static http_status status;
+    switch (err) {
+        case 0:
+            status.code = 200;
+            status.text = "OK";
+            break;
+        case 2:
+            status.code = 404;
+            status.text = "Not found";
+            break;
+        case 13:
+            status.code = 403;
+            status.text = "Forbidden";
+            break;
+        default:
+            status.code = 500;
+            status.text = "Internal server error";
     }
-    return -1;
+    return &status;
 }
 
+void send_http_err(http_status* status, int client) {
+    char response_hdr_buf[RESPONSE_HDR_SZ];
+    const char* hdr_template = "HTTP/1.1 %d %s\r\n"
+                               "Server: FileSrv\r\n\r\n";
+    int chars_written = snprintf(response_hdr_buf, RESPONSE_HDR_SZ, hdr_template, status->code, status->text);
+    write(client, response_hdr_buf, chars_written); // no flags required, write is enough
+}
+
+bool send_file(int fd, int client) {
+    struct stat fd_stat;
+    int res = fstat(fd, &fd_stat);
+    if (-1 == res) {
+        perror("fstat");
+        send_http_err(errno_2http_status(-1), client);
+        return false;
+    }
+    intmax_t file_sz = fd_stat.st_size;
+    printf("file size: %jd bytes\n", file_sz);
+
+    char response_hdr_buf[RESPONSE_HDR_SZ];
+    const char* hdr_template = "HTTP/1.1 %d %s\r\n"
+                               "Server: FileSrv\r\n"
+                               "Content-Length: %jd\r\n"
+                               "Connection: close\r\n\r\n";
+
+    http_status* status = errno_2http_status(0);
+    int headers_sz = snprintf(response_hdr_buf, RESPONSE_HDR_SZ, hdr_template, status->code, status->text, file_sz);
+
+    ssize_t bytes_total = 0, bytes_current = 0;
+    do {
+        bytes_current = write(client, response_hdr_buf + bytes_total, headers_sz - bytes_total);
+        if (-1 == bytes_current) {
+            perror("write headers");
+            return false;
+        }
+        bytes_total += bytes_current;
+    } while (bytes_total < headers_sz);
+
+    bytes_total = 0;
+    do {
+        bytes_current = sendfile(client, fd, &bytes_total, file_sz - bytes_total);
+        if (-1 == bytes_current) {
+            perror("write file");
+            return false;
+        }
+        bytes_total += bytes_current;
+    } while (bytes_total < file_sz);
+    return true;
+}
 
 void run(const char* dir_name, const char* listen_addr) {
     struct sockaddr_in srv_addr, client_addr = {0};
     if (!init_ip_addr(listen_addr, &srv_addr)) {
-        perror("bad listening address specified");
+        perror("bad listen address specified");
         exit(EXIT_FAILURE);
     }
 
@@ -171,40 +236,25 @@ void run(const char* dir_name, const char* listen_addr) {
                         break; // for
                     }
                     buf[READ_SZ - 1] = '\0';
-                    printf("received from client:\n%s\n", buf);
+                    printf("client request:\n%s\n", buf);
 
                     char* requested_file = get_requested_file_name(buf);
                     memset(full_file_name, 0, sizeof(full_file_name));
                     snprintf(full_file_name, FULL_FILE_NAME_SZ, "%s/%s", dir_name, requested_file);
 
-                    printf("requested file: [%s]\n", full_file_name);
+                    printf("requested file: \"%s\"\n", full_file_name);
 
-                    // TODO: check:
-                    // 1. if file exists
-                    // 2. if proc has permissions to read
-                    // 3. use stat call for that...
-//                    FILE* fd = fopen(full_file_name, "r"); 
-//                    if (!is_file_exists(full_file_name)) {
-//                        // TODO: no file response
-//                        printf("no file: %s\n", full_file_name);
-//                        continue;
-//                    }
-
-                    // TODO: read in binary mode
                     int fd = open(full_file_name, O_RDONLY);
                     if (-1 == fd) {
+                        int err_code = errno;
                         perror("open");
-                        printf("errno: %d\n", errno);
-                        
-                        int http_status = errno_2http_status();
-                        if (-1 == http_status) {
-                            // send "internal server error?"
-                        }
-
+                        send_http_err(errno_2http_status(err_code), events[i].data.fd);
                         continue;
                     }
-                    
-                    printf("%s is opened\n", full_file_name);
+                    if (!send_file(fd, events[i].data.fd)) {
+                        fprintf(stderr, "file sending error");
+                    }
+                    printf("file has been sent\n");
                     close(fd);
                 }
             } else {
