@@ -39,10 +39,8 @@ void print_help(void) {
 }
 
 bool init_ip_addr(const char* addr_str, struct sockaddr_in* addr) {
-#define IP_BUF_SZ 16
-    char ip[IP_BUF_SZ] = {0};
-
     // expected format example: 127.0.0.1:8080
+    char ip[16] = {0};
     char* colon_ptr = strchr(addr_str, ':');
     if (NULL == colon_ptr) {
         return false;
@@ -53,14 +51,20 @@ bool init_ip_addr(const char* addr_str, struct sockaddr_in* addr) {
         return false;
     }
 
-    strncpy(ip, addr_str, MIN(IP_BUF_SZ - 1, colon_ptr - addr_str));
+    strncpy(ip, addr_str, MIN((long)sizeof(ip) - 1, colon_ptr - addr_str));
     addr->sin_family = AF_INET;
     addr->sin_addr.s_addr = inet_addr(ip);
     addr->sin_port = htons(port);
     return true;
 }
 
-bool set_nonblocking(int sock_fd) { return -1 != fcntl(sock_fd, F_SETFD, fcntl(sock_fd, F_GETFD, 0) | O_NONBLOCK); }
+bool set_nonblocking(int sock_fd) {
+    int fd_get_res = fcntl(sock_fd, F_GETFD, 0);
+    if (-1 == fd_get_res) {
+        return false;
+    }
+    return -1 != fcntl(sock_fd, F_SETFD, fd_get_res | O_NONBLOCK);
+}
 
 bool epoll_add(int epoll_fd, int fd, uint32_t events) {
     static struct epoll_event event;
@@ -70,21 +74,25 @@ bool epoll_add(int epoll_fd, int fd, uint32_t events) {
 }
 
 char* get_requested_file_name(const char* buf) {
-    // expected format of custom header with file name:
-    // file:<file_name>
-#define FILE_HDR "file:"
-#define FILE_NAME_BUF_SZ 256
-    char* file_begin = strstr(buf, FILE_HDR);
+    char* file_begin = strchr(buf, '/');
     if (!file_begin) {
-        perror("no file header passed");
+        fprintf(stderr, "no file name passed\n");
         return NULL;
     }
-    file_begin += strlen(FILE_HDR);
-    char* file_end = strchr(file_begin, '\r');
-    int file_name_len = MIN(FILE_NAME_BUF_SZ - 1, file_end - file_begin);
+    char* file_end = strchr(file_begin, ' ');
+    if (!file_end) {
+        fprintf(stderr, "no file name passed\n");
+        return NULL;
+    }
+    file_begin += 1;
+    if (file_begin == file_end) {
+        fprintf(stderr, "no file name passed\n");
+        return NULL;
+    }
+    static char file_name_buf[256];
+    int file_name_len = MIN((long)sizeof(file_name_buf) - 1, file_end - file_begin);
 
-    static char file_name_buf[FILE_NAME_BUF_SZ];
-    strncpy(file_name_buf, file_begin, file_name_len);
+    strncpy(file_name_buf, file_begin, sizeof(file_name_buf));
     file_name_buf[file_name_len] = '\0';
     return file_name_buf;
 }
@@ -120,8 +128,17 @@ void send_http_err(http_status* status, int client) {
     char response_hdr_buf[RESPONSE_HDR_SZ];
     const char* hdr_template = "HTTP/1.1 %d %s\r\n"
                                "Server: FileSrv\r\n\r\n";
-    int chars_written = snprintf(response_hdr_buf, RESPONSE_HDR_SZ, hdr_template, status->code, status->text);
-    write(client, response_hdr_buf, chars_written); // no flags required, write is enough
+    int response_sz = snprintf(response_hdr_buf, RESPONSE_HDR_SZ, hdr_template, status->code, status->text);
+
+    ssize_t bytes_total = 0, bytes_current = 0;
+    do {
+        bytes_current = write(client, response_hdr_buf + bytes_total, response_sz - bytes_total);
+        if (-1 == bytes_current) {
+            perror("write http err");
+            return;
+        }
+        bytes_total += bytes_current;
+    } while (bytes_total < response_sz);
 }
 
 bool send_file(int fd, int client) {
@@ -239,6 +256,13 @@ void run(const char* dir_name, const char* listen_addr) {
                     printf("client request:\n%s\n", buf);
 
                     char* requested_file = get_requested_file_name(buf);
+                    if (NULL == requested_file) {
+                        // no file name passed, close connection
+                        send_http_err(errno_2http_status(2), events[i].data.fd);
+                        close(events[i].data.fd);
+                        fprintf(stderr, "disconnect client...\n");
+                        continue;
+                    }
                     memset(full_file_name, 0, sizeof(full_file_name));
                     snprintf(full_file_name, FULL_FILE_NAME_SZ, "%s/%s", dir_name, requested_file);
 
@@ -249,13 +273,20 @@ void run(const char* dir_name, const char* listen_addr) {
                         int err_code = errno;
                         perror("open");
                         send_http_err(errno_2http_status(err_code), events[i].data.fd);
+                        close(events[i].data.fd);
+                        fprintf(stderr, "disconnect client...\n");
                         continue;
                     }
-                    if (!send_file(fd, events[i].data.fd)) {
-                        fprintf(stderr, "file sending error");
-                    }
-                    printf("file has been sent\n");
+                    bool res = send_file(fd, events[i].data.fd);
                     close(fd);
+
+                    if (res) {
+                        printf("file has been sent\n");
+                    } else {
+                        send_http_err(errno_2http_status(-1), events[i].data.fd);
+                        close(events[i].data.fd);
+                        fprintf(stderr, "file sending error. disconnect client...\n");
+                    }
                 }
             } else {
                 printf("unexpected event: %u", events[i].events);
@@ -263,9 +294,9 @@ void run(const char* dir_name, const char* listen_addr) {
 
             // check if existing client wants to disconnect
             if (events[i].events & (EPOLLHUP | EPOLLRDHUP)) {
-                printf("client disconnected\n");
                 epoll_ctl(epoll_fd, EPOLL_CTL_DEL, events[i].data.fd, NULL);
                 close(events[i].data.fd);
+                printf("client disconnected\n");
             }
         }
     }
