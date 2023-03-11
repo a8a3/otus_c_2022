@@ -1,0 +1,4 @@
+# ignore everything in subprojects
+subprojects/*
+# but not:
+!subprojects/*.wrap
