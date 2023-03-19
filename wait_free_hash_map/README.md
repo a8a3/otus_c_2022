@@ -1,13 +1,12 @@
 # wait free hash map implementation
 
-## TODO:
 ### interface
-
 TBD: 
 - wtf_table_count();
 - wtf_table_print(); or wtf_table_apply()
 - wtf_table_remove();
 
+TODO: update interface
 ```
 // wtf stands for WaiT Free
 typedef struct wtf_table* wtf_table_t
@@ -27,6 +26,9 @@ void* wtf_table_find(wtf_table_t t, const void* key);
 void wtf_table_destroy(wtf_table_t* t);
 ```
 
+### hash func
+Assumed the table receives precalculated hashed keys
+
 ### memory management
 As the standard memory allocator is blocking, special provisions must be made for lock-free and
 wait-free programs. In order for the hash map to behave in a wait-free manner, the user must choose 
@@ -38,5 +40,11 @@ a memory allocator that can manage memory in a wait-free manner
 - ???
 
 ### tests
-### sanitizing, formatting
+cmocka tests on board
+
 ### benchmarks
+TODO: gbench?
+
+### sanitizing, formatting, linting
+TODO: add clang-tidy call on each build call
+TODO: add formatting on each call

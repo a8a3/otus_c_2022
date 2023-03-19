@@ -4,165 +4,127 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define UNIT_TESTING // this define enable memory leaks checking awailable in cmocka framework
+// TODO: turn on
+// #define UNIT_TESTING // this define enable memory leaks checking awailable in cmocka framework
+//
 #include <cmocka.h>
+#include <wtf_table.h>
 
-static void dummy_test(void** state) { // NOLINT
-    assert_uint_equal(42, 42);
+int g_val = 42;
+// some statements I need to be aware of before implementation
+static void wtf_table_statements(void** state) { // NOLINT
+    // expected that all pointers are aligned
+    assert_true(_Alignof(int*) >= 4);
+    int* p = &g_val;
+
+    // cast to integer
+    uintptr_t i = (uintptr_t)p;
+    print_message("original: %p, casted to int     : 0x%lx\n", p, i);
+    print_message("original: %p, casted back to ptr: %p\n", p, (int*)i); // NOLINT
+
+    assert_ptr_equal(p, (int*)i); // NOLINT: Integer to pointer cast pessimizes optimization opportunities
+
+    // 2 LSB are not used
+    assert_true((i & 3U) == 0U);
+
+    // add tag to integer pointer representation
+    i = i | 1U;
+    print_message("original: %p, casted back marked: %p\n", p, (int*)i); // NOLINT
+
+    // cast back to pointer
+    int* pt = (int*)i; // NOLINT: Integer to pointer cast pessimizes optimization opportunities
+
+    // cast back to integer and remove tag
+    uintptr_t iu = (uintptr_t)pt & ~((uintptr_t)1U);
+
+    // cast back to a pointer
+    int* pu = (int*)iu; // NOLINT: Integer to pointer cast pessimizes optimization opportunities
+    assert_ptr_equal(p, pu);
+
+    *pu = 0;
+    assert_int_equal(g_val, 0);
 }
 
-// static void pirsons_hash_test(void **state) { //NOLINT
-//     uint32_t cat_hash = pirsons_hash("cat", 3);
-//     uint32_t dog_hash = pirsons_hash("dog", 3);
-//     assert_uint_not_equal(cat_hash, dog_hash);
-//
-//     assert_uint_equal(cat_hash, pirsons_hash("cat", 3));
-//     assert_uint_equal(dog_hash, pirsons_hash("dog", 3));
-// }
-//
-// static void hash_map_creation_test(void **state) { // NOLINT
-//     hash_map* m = create_hash_map(8);
-//     assert_non_null(m);
-//     assert_uint_equal(m->capacity, 8);
-//     assert_uint_equal(m->size, 0);
-//     remove_hash_map(&m);
-//     assert_ptr_equal(m, NULL);
-// }
-//
-// static void hash_map_basic_operations_test(void **state) { // NOLINT
-//     hash_map* m = create_hash_map(8);
-//
-//     const char* key = "test";
-//     const size_t key_len = strlen(key);
-//     const int val = 42;
-//
-//     // insert new node
-//     node* n = hash_map_insert(m, key, key_len);
-//     assert_ptr_not_equal(n, NULL);
-//     assert_int_equal(n->val, 0);
-//     n->val = val;
-//
-//     assert_uint_equal(n->key_len, key_len);
-//     assert_string_equal(n->key, key);
-//     assert_uint_equal(m->size, 1);
-//
-//     // get non-existent node
-//     const char* bad_key = "bad_key";
-//     n = hash_map_get_node(m, bad_key, strlen(bad_key));
-//     assert_ptr_equal(n, NULL);
-//
-//     // get existing node
-//     n = hash_map_get_node(m, key, key_len);
-//     assert_ptr_not_equal(n, NULL);
-//     assert_int_equal(n->val, val);
-//
-//     remove_hash_map(&m);
-// }
-//
-// static void hash_map_rehashing_test(void **state) { // NOLINT
-//     hash_map* m = create_hash_map(4);
-//
-//     node* na = hash_map_insert(m, "a", 1);
-//     na->val = 128;
-//     node* nb = hash_map_insert(m, "b", 1);
-//     nb->val = 256;
-//     assert_uint_equal(m->capacity, 4);
-//     assert_uint_equal(m->size, 2);
-//
-//     node* cur_nodes_ptr = m->nodes;
-//     node* nc = hash_map_insert(m, "c", 1);
-//     nc->val = 512;
-//     assert_ptr_not_equal(cur_nodes_ptr, m->nodes);
-//     assert_uint_equal(m->capacity, 8);
-//     assert_uint_equal(m->size, 3);
-//
-//     // na, nb nodes were invalidated
-//     node* new_na = hash_map_get_node(m, "a", 1);
-//     assert_ptr_not_equal(new_na, NULL);
-//     assert_ptr_not_equal(new_na, na);
-//     assert_uint_equal(new_na->val, 128);
-//
-//     node* new_nb = hash_map_get_node(m, "b", 1);
-//     assert_ptr_not_equal(new_nb, NULL);
-//     assert_ptr_not_equal(new_nb, nb);
-//     assert_uint_equal(new_nb->val, 256);
-//
-//     remove_hash_map(&m);
-// }
-//
-// static void words_counting_test(void **state) { // NOLINT
-//     FILE* tmp_file = tmpfile();
-//     fputs("one\n", tmp_file);
-//     fputs("два два\n", tmp_file);
-//     fputs("three three three\n", tmp_file);
-//     fputs("четыре,четыре,четыре,четыре\n", tmp_file);
-//     rewind(tmp_file);
-//
-//     hash_map* hm = create_hash_map(HASH_MAP_DEFAULT_SIZE);
-//     assert_ptr_not_equal(hm, NULL);
-//
-//     hash_map_init(hm, tmp_file);
-//
-//     node* n1 = hash_map_get_node(hm, "one", strlen("one"));
-//     assert_ptr_not_equal(n1, NULL);
-//     assert_int_equal(n1->val, 1);
-//
-//     node* n2 = hash_map_get_node(hm, "два", strlen("два"));
-//     assert_ptr_not_equal(n2, NULL);
-//     assert_int_equal(n2->val, 2);
-//
-//     node* n3 = hash_map_get_node(hm, "three", strlen("three"));
-//     assert_ptr_not_equal(n3, NULL);
-//     assert_int_equal(n3->val, 3);
-//
-//     node* n4 = hash_map_get_node(hm, "четыре", strlen("четыре"));
-//     assert_ptr_not_equal(n4, NULL);
-//     assert_int_equal(n4->val, 4);
-//
-//     remove_hash_map(&hm);
-//     assert_ptr_equal(hm, NULL);
-// }
-//
-// static void words_delimeters_test(void **state) { // NOLINT
-//     FILE* tmp_file = tmpfile();
-//     fputs("one two\nthree,four.five?six!seven;eight", tmp_file);
-//     rewind(tmp_file);
-//
-//     hash_map* hm = create_hash_map(HASH_MAP_DEFAULT_SIZE);
-//     hash_map_init(hm, tmp_file);
-//
-//     node* n1 = hash_map_get_node(hm, "one", 3);
-//     assert_ptr_not_equal(n1, NULL);
-//     assert_int_equal(n1->val, 1);
-//
-//     node* n2 = hash_map_get_node(hm, "two", 3);
-//     assert_ptr_not_equal(n2, NULL);
-//     assert_int_equal(n2->val, 1);
-//
-//     node* n3 = hash_map_get_node(hm, "three", 5);
-//     assert_ptr_not_equal(n3, NULL);
-//     assert_int_equal(n3->val, 1);
-//
-//     node* n4 = hash_map_get_node(hm, "four", 4);
-//     assert_ptr_not_equal(n4, NULL);
-//     assert_int_equal(n4->val, 1);
-//
-//     node* n5 = hash_map_get_node(hm, "five", 4);
-//     assert_ptr_not_equal(n5, NULL);
-//     assert_int_equal(n5->val, 1);
-//
-//     node* n6 = hash_map_get_node(hm, "six", 3);
-//     assert_ptr_not_equal(n6, NULL);
-//     assert_int_equal(n6->val, 1);
-//
-//     node* n7 = hash_map_get_node(hm, "seven", 5);
-//     assert_ptr_not_equal(n7, NULL);
-//     assert_int_equal(n7->val, 1);
-//
-//     remove_hash_map(&hm);
-// }
+typedef _Atomic(int*) atomic_iptr_t; // i.e atomic pointer to non- atomic int
+typedef union {
+    atomic_iptr_t as_ptr;
+    atomic_uintptr_t as_uint;
+} atomic_iptr_uint_u;
+
+static void wtf_table_atomic_statements(void** state) { // NOLINT
+    // expected that all atomic pointers are aligned (4 bytes boundary on x32 systems)
+    assert_true(_Alignof(atomic_iptr_uint_u) >= 4);
+    assert_true(_Alignof(atomic_iptr_t) >= 4);
+    assert_true(_Alignof(atomic_uintptr_t) >= 4);
+
+    atomic_iptr_uint_u u;
+    u.as_ptr = &g_val;
+
+    print_message("atomic pointer representation: %p, atomic uint representation: 0x%lx\n", u.as_ptr, u.as_uint);
+    // 2 LSB are not used
+    assert_true((u.as_uint & 3U) == 0U);
+
+    // add tag to LSB of integer pointer representation
+    atomic_fetch_or(&u.as_uint, (uintptr_t)(1U));
+    print_message("marked  : %p, 0x%lx\n", u.as_ptr, u.as_uint);
+
+    // remove tag from LSB
+    atomic_fetch_and(&u.as_uint, ~((uintptr_t)(1U)));
+    print_message("unmarked: %p, 0x%lx\n", u.as_ptr, u.as_uint);
+    *u.as_ptr = 0;
+    assert_int_equal(g_val, 0);
+}
+
+static void wtf_table_nodes_marking(void** state) { // NOLINT
+    uintptr_t initial_val = 0xFFFFFFFC;
+    atomic_uintptr_t val = initial_val;
+    assert_false(is_marked_node(val));
+
+    mark_data_node(&val);
+    assert_true(is_marked_node(val));
+    assert_false(val == initial_val);
+
+    atomic_uintptr_t unmarked = unmark_data_node(val);
+    assert_false(is_marked_node(unmarked));
+
+    // rest bits are fine as well
+    assert_true(unmarked == initial_val);
+}
+
+static void wtf_table_creation_deletion(void** state) { // NOLINT
+    wtf_table_t* t = wtf_table_create(64);
+    assert_ptr_not_equal(t, NULL);
+    wtf_table_destroy(&t);
+    assert_ptr_equal(t, NULL);
+}
+
+static void wtf_table_insertion(void** state) { // NOLINT
+    wtf_table_t* t = wtf_table_create(64);
+    const void* res = wtf_table_insert(t, 0, "value");
+    assert_ptr_equal(res, NULL);
+    res = wtf_table_find(t, 0);
+    assert_string_equal(res, "value");
+    res = wtf_table_insert(t, 1, "value1");
+    res = wtf_table_insert(t, 2, "value2");
+    res = wtf_table_insert(t, 3, "value3");
+    res = wtf_table_insert(t, 4, "value4");
+
+    res = wtf_table_find(t, 1);
+    assert_string_equal(res, "value1");
+    res = wtf_table_find(t, 2);
+    assert_string_equal(res, "value2");
+    res = wtf_table_find(t, 3);
+    assert_string_equal(res, "value3");
+    res = wtf_table_find(t, 4);
+    assert_string_equal(res, "value4");
+
+    wtf_table_destroy(&t);
+}
 
 int main(void) {
-    const struct CMUnitTest tests[] = {cmocka_unit_test(dummy_test)};
+    const struct CMUnitTest tests[] = {
+        cmocka_unit_test(wtf_table_statements), cmocka_unit_test(wtf_table_atomic_statements),
+        cmocka_unit_test(wtf_table_nodes_marking), cmocka_unit_test(wtf_table_creation_deletion),
+        cmocka_unit_test(wtf_table_insertion)};
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
