@@ -12,15 +12,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define BITS_COUNT(entity) sizeof(entity) * CHAR_BIT
-typedef size_t hash_t;
-
 typedef struct {
     size_t hash_;
     void* value_;
 } node_t;
 typedef void* node_ptr_t;
 typedef _Atomic(void*) atomic_node_ptr_t; // i.e atomic pointer to non-atomic node_t
+
+#define AS_NODE(node) ((node_t*)(node))
 
 void unmark_atomic_node(atomic_node_ptr_t* n) {
     atomic_fetch_and_explicit((atomic_uintptr_t*)n, ~((uintptr_t)1U), memory_order_release);
@@ -81,24 +80,24 @@ bool is_array(void* a) { return (uintptr_t)a & ((uintptr_t)1U << 1); }
 // wtf stands for WaiT Free
 typedef struct {
     atomic_node_ptr_t* head_;
-    size_t arr_sz_; // head and all array nodes(except last-level arrays) have same size
-    size_t max_fail_count;
-    uint8_t bits_shift;
 } wtf_table_t;
 
-// Create table instance and return pointer on it
-wtf_table_t* wtf_table_create(size_t arr_sz) {
+#define ARR_SZ 64
+#define BIT_SHIFT 6       // log2(ARR_SZ)
+#define MAX_LVL_ARR_SZ 16 // 1 << (ARR_SZ % BIT_SHIFT)
+#define MAX_LVL 10        // ARR_SZ / BIT_SHIFT
+#define MAX_FAIL_CNT 8
+
+#define CUR_ARR_SZ(lvl) ((lvl) < MAX_LVL) ? ARR_SZ : MAX_LVL_ARR_SZ
+
+wtf_table_t* wtf_table_create() {
     wtf_table_t* t = malloc(sizeof(wtf_table_t));
-    t->head_ = malloc(sizeof(atomic_node_ptr_t) * arr_sz);
-    t->arr_sz_ = arr_sz;
-    memset(t->head_, 0, sizeof(atomic_node_ptr_t) * arr_sz);
-    // TODO: magic number
-    t->max_fail_count = 10;
-    t->bits_shift = (uint8_t)log2(BITS_COUNT(hash_t));
+    t->head_ = malloc(sizeof(atomic_node_ptr_t) * ARR_SZ);
+    memset(t->head_, 0, sizeof(atomic_node_ptr_t) * ARR_SZ);
     return t;
 }
 
-node_t* allocate_node(size_t hash, void* value) {
+node_t* wtf_table_allocate_node(size_t hash, void* value) {
     node_t* n = malloc(sizeof(node_t));
     if (NULL == n) {
         return NULL;
@@ -108,19 +107,14 @@ node_t* allocate_node(size_t hash, void* value) {
     return n;
 }
 
-// TODO: check if I need this BITS_COUNT macro, when I do know size of array itself(t->arr_sz_)
-size_t wtf_table_get_arr_sz(wtf_table_t* t, size_t lvl) {
-    return lvl < BITS_COUNT(t->arr_sz_) / t->bits_shift ? t->arr_sz_ : (1L << (BITS_COUNT(t->arr_sz_) % t->bits_shift));
-}
-
 // replace node value with new array
 // insert value into new array
 // return new array to caller side
-atomic_node_ptr_t* expand_table(wtf_table_t* t, atomic_node_ptr_t* expanded_node, size_t r) {
+atomic_node_ptr_t* wtf_table_expand_table(atomic_node_ptr_t* expanded_node, size_t s) {
     node_ptr_t node = atomic_load_explicit(expanded_node, memory_order_acquire);
-    uint8_t next_level = r / t->bits_shift + 1;
+    uint8_t next_level = s / BIT_SHIFT + 1;
     // new array size is equal to t->arr_sz_ for 0-9 levels only
-    size_t new_array_sz = wtf_table_get_arr_sz(t, next_level);
+    size_t new_array_sz = CUR_ARR_SZ(next_level);
     printf("exp: new array sz: %lu, level: %u\n", new_array_sz, next_level);
 
     atomic_node_ptr_t* new_array = malloc(sizeof(atomic_node_ptr_t) * new_array_sz);
@@ -131,7 +125,7 @@ atomic_node_ptr_t* expand_table(wtf_table_t* t, atomic_node_ptr_t* expanded_node
     printf("exp: new array allocated: %p\n", (void*)new_array);
 
     // calc expanded node idx in new array
-    uint8_t expanded_node_new_pos = (((node_t*)node)->hash_ >> (t->bits_shift + r)) & (new_array_sz - 1);
+    uint8_t expanded_node_new_pos = AS_NODE(node)->hash_ >> (BIT_SHIFT + s) & (new_array_sz - 1);
     // insert expanded node in new array
     new_array[expanded_node_new_pos] = node;
     printf("exp: expanded node in new arr: %p, pos: %u\n", new_array[expanded_node_new_pos], expanded_node_new_pos);
@@ -145,7 +139,6 @@ atomic_node_ptr_t* expand_table(wtf_table_t* t, atomic_node_ptr_t* expanded_node
         printf("exp: new array inserted: %p\n", (void*)*expanded_node);
         return new_array;
     } else {
-
         printf("exp: unable to insert new array: %p\n", (void*)new_array);
         // other thread has inserted array in this node already
         if (is_array(&node)) {
@@ -161,29 +154,29 @@ atomic_node_ptr_t* expand_table(wtf_table_t* t, atomic_node_ptr_t* expanded_node
 // here key is precalculated hash of a real key
 // If the table holds the key, value overwrites the previous value, and wtf_table_insert returns the previous value.
 // Otherwise, key value pair is added to the table, and wtf_table_insert returns NULL
+//
 // TODO: check if all actions with local[pos] should be atomic...
-void* wtf_table_insert(wtf_table_t* t, hash_t hash, void* value) {
-    node_ptr_t new_node;
-    new_node = allocate_node(hash, value);
+//       apply same approach as in find function
+void* wtf_table_insert(wtf_table_t* t, size_t hash, void* value) {
+    node_ptr_t new_node = wtf_table_allocate_node(hash, value);
     printf("ins: node allocated at %p\n", (void*)new_node);
 
     if (NULL == new_node) {
         return NULL;
     }
-    atomic_node_ptr_t* cur_arr = t->head_; // start from head
+    atomic_node_ptr_t* cur_arr = t->head_;
     uint8_t fail_count = 0, pos = 0;
 
-    for (size_t r = 0; r < BITS_COUNT(hash); r += t->bits_shift) {
+    for (size_t s = 0; s < ARR_SZ; s += BIT_SHIFT) {
         printf("ins: cur_arr: %p\n", cur_arr);
-        // TODO: 10th r should be 4 bits length
-        pos = hash & (t->arr_sz_ - 1); // position in local(current) array node
+        pos = hash & (ARR_SZ - 1); // position in current array
         node_ptr_t cur_node = cur_arr[pos];
         printf("ins: hash: %zu, pos in local: %u\n", hash, pos);
-        hash >>= t->bits_shift;
+        hash >>= BIT_SHIFT;
         fail_count = 0;
 
         for (;;) {
-            if (fail_count > t->max_fail_count) {
+            if (fail_count > MAX_FAIL_CNT) {
                 mark_node(&cur_node);
             }
 
@@ -195,11 +188,10 @@ void* wtf_table_insert(wtf_table_t* t, hash_t hash, void* value) {
                 // TODO:   local = expand_table(local, pos, node, r);
                 break;
             } else if (NULL == cur_node) {
-                // TODO: explicit cmp func
                 printf("ins: try insert: obj: %p, exp: %p, desired: %p\n", cur_arr[pos], cur_node, new_node);
                 if (atomic_compare_exchange_strong(&cur_arr[pos], &cur_node, new_node)) {
                     printf("ins: %p is inserted into: %p, at %u, level: %lu\n", cur_arr[pos], cur_arr, pos,
-                           r / t->bits_shift);
+                           s / BIT_SHIFT);
                     return NULL; // node added
                 } else {
                     // TBD
@@ -211,14 +203,14 @@ void* wtf_table_insert(wtf_table_t* t, hash_t hash, void* value) {
                 if (((node_t*)cur_node)->hash_ == ((node_t*)new_node)->hash_) {
                     if (atomic_compare_exchange_strong((atomic_uintptr_t*)&cur_arr[pos], (uintptr_t*)&cur_node,
                                                        (uintptr_t)new_node)) {
-                        printf("ins: %p is inserted at %u, level: %lu\n", (void*)new_node, pos, r / t->bits_shift);
+                        printf("ins: %p is inserted at %u, level: %lu\n", (void*)new_node, pos, s / BIT_SHIFT);
                         return cur_node; // prev node
                     } else {
                         // TBD
                     }
                 } else {
                     printf("ins: expand %p\n", (void*)cur_node);
-                    atomic_node_ptr_t* expanded = expand_table(t, &cur_arr[pos], r);
+                    atomic_node_ptr_t* expanded = wtf_table_expand_table(&cur_arr[pos], s);
                     printf("ins: expanded %p\n", (void*)expanded);
 
                     if (!is_array(expanded)) {
@@ -238,37 +230,33 @@ void* wtf_table_insert(wtf_table_t* t, hash_t hash, void* value) {
 // Return value associated with the key, if the table doesn't hold the key, return NULL
 void* wtf_table_find(wtf_table_t* t, size_t hash) {
     atomic_node_ptr_t* cur_arr = t->head_;
-    atomic_node_ptr_t node;
-
+    node_ptr_t node;
     size_t cur_hash = hash;
     uint8_t pos;
     printf("fnd: ==> find %lu hash\n", hash);
 
-    for (size_t r = 0; r < BITS_COUNT(hash); r += t->bits_shift) {
-        uint8_t cur_level = r / t->bits_shift;
+    for (size_t r = 0; r < ARR_SZ; r += BIT_SHIFT) {
+        pos = cur_hash & (ARR_SZ - 1);
+        printf("fnd: level: %lu, pos: %u\n", r / BIT_SHIFT, pos);
+        cur_hash >>= BIT_SHIFT;
 
-        pos = cur_hash & (t->arr_sz_ - 1);
-        printf("fnd: level: %u, pos: %u\n", cur_level, pos);
-        cur_hash >>= t->bits_shift;
+        node = get_unmarked_node(atomic_load(&cur_arr[pos]));
 
-        // TODO: return atomic ptr?
-        node = get_unmarked_node(cur_arr[pos]);
-
-        if (is_atomic_array(node)) {
-            printf("fnd: array node %p in pos: %u, level: %lu\n", (void*)node, pos, r / t->bits_shift);
-            unmark_atomic_array(&node);
+        if (is_array(node)) {
+            printf("fnd: array node %p in pos: %u, level: %lu\n", (void*)node, pos, r / BIT_SHIFT);
+            unmark_array(&node);
             cur_arr = node;
             printf("fnd: unmarked array: %p\n", (void*)cur_arr);
         } else {
-            printf("fnd: regular node %p in pos: %u, level: %lu\n", node, pos, r / t->bits_shift);
+            printf("fnd: regular node %p in pos: %u, level: %lu\n", node, pos, r / BIT_SHIFT);
             if (NULL == node) {
                 printf("fnd: node is empty\n");
                 return NULL;
-            } else if (((node_t*)(node))->hash_ == hash) {
+            } else if (AS_NODE(node)->hash_ == hash) {
                 printf("fnd: hash matched: %lu is found\n", hash);
-                return ((node_t*)(node))->value_;
+                return AS_NODE(node)->value_;
             } else {
-                printf("fnd: hash mismatched: requested: %lu, found: %lu\n", hash, ((node_t*)(node))->hash_);
+                printf("fnd: hash mismatched: requested: %lu, found: %lu\n", hash, AS_NODE(node)->hash_);
                 return NULL;
             }
         }
@@ -279,8 +267,8 @@ void* wtf_table_find(wtf_table_t* t, size_t hash) {
 // TODO: should it have some atomic semanthics?
 typedef void (*doer)(atomic_node_ptr_t, void*);
 void wtf_table_for_each_helper(wtf_table_t* t, atomic_node_ptr_t* a, size_t lvl, doer f, void* user_data) {
-
-    for (size_t i = 0; i < wtf_table_get_arr_sz(t, lvl); ++i) {
+    size_t arr_sz = CUR_ARR_SZ(lvl);
+    for (size_t i = 0; i < arr_sz; ++i) {
         atomic_node_ptr_t node = a[i];
         if (NULL == node) {
             continue;
@@ -296,19 +284,18 @@ void wtf_table_for_each_helper(wtf_table_t* t, atomic_node_ptr_t* a, size_t lvl,
     }
 }
 
-// TODO: take in account last level array size...
 void wtf_table_for_each(wtf_table_t* t, doer f, void* user_data) {
     wtf_table_for_each_helper(t, t->head_, 0, f, user_data);
 }
 
-void destroy_node(atomic_node_ptr_t node, void* user_data) {
+void wtf_table_destroy_node(atomic_node_ptr_t node, void* user_data) {
     (void)user_data;
     free(node);
 }
 
 // Deallocate table content and the table itself, set t to NULL
 void wtf_table_destroy(wtf_table_t** t) {
-    wtf_table_for_each(*t, destroy_node, NULL);
+    wtf_table_for_each(*t, wtf_table_destroy_node, NULL);
     free((*t)->head_);
     free(*t);
     *t = NULL;

@@ -136,7 +136,7 @@ static void wtf_table_nodes_marking(void** state) { // NOLINT
 }
 
 static void wtf_table_creation_deletion(void** state) { // NOLINT
-    wtf_table_t* t = wtf_table_create(64);
+    wtf_table_t* t = wtf_table_create();
     assert_ptr_not_equal(t, NULL);
     wtf_table_destroy(&t);
     assert_ptr_equal(t, NULL);
@@ -148,7 +148,7 @@ void get_count(atomic_node_ptr_t n, void* counter) {
 }
 
 static void wtf_table_for_each_test(void** state) { // NOLINT
-    wtf_table_t* t = wtf_table_create(64);
+    wtf_table_t* t = wtf_table_create();
     size_t count = 42;
     for (size_t i = 0; i < count; ++i) {
         wtf_table_insert(t, i, "42");
@@ -161,7 +161,7 @@ static void wtf_table_for_each_test(void** state) { // NOLINT
 }
 
 static void wtf_table_simple_insert_find(void** state) { // NOLINT
-    wtf_table_t* t = wtf_table_create(64);
+    wtf_table_t* t = wtf_table_create();
     const void* res = wtf_table_insert(t, 0, "value0");
     assert_ptr_equal(res, NULL);
     res = wtf_table_find(t, 0);
@@ -184,7 +184,7 @@ static void wtf_table_simple_insert_find(void** state) { // NOLINT
 }
 
 static void wtf_table_simple_insert_duplicates(void** state) { // NOLINT
-    wtf_table_t* t = wtf_table_create(64);
+    wtf_table_t* t = wtf_table_create();
     void* res = wtf_table_insert(t, 0, "42");
     assert_ptr_equal(res, NULL);
     res = wtf_table_find(t, 0);
@@ -205,7 +205,7 @@ static void wtf_table_simple_insert_duplicates(void** state) { // NOLINT
 }
 
 static void wtf_table_insert_find_in_subarrays(void** state) { // NOLINT
-    wtf_table_t* t = wtf_table_create(64);
+    wtf_table_t* t = wtf_table_create();
     const void* res = wtf_table_insert(t, 0, "value0");
     assert_ptr_equal(res, NULL);
     // find node in initial position
@@ -260,7 +260,7 @@ static void wtf_table_insert_find_on_max_depth(void** state) { // NOLINT
         {1L << 62, "1 << 62"}, // 11
         {1L << 63, "1 << 63"}, // 11
     };
-    wtf_table_t* t = wtf_table_create(64);
+    wtf_table_t* t = wtf_table_create();
 
     for (size_t i = 0; i < sizeof(nodes) / sizeof(nodes[0]); ++i) {
         assert_ptr_equal(NULL, wtf_table_insert(t, nodes[i].hash_, nodes[i].value_));
@@ -277,7 +277,7 @@ void print_node(atomic_node_ptr_t n, void* user_data) {
 }
 
 static void wtf_table_print(void** state) { // NOLINT
-    wtf_table_t* t = wtf_table_create(64);
+    wtf_table_t* t = wtf_table_create();
     wtf_table_insert(t, 0, "value0");
     wtf_table_insert(t, 1, "value1");
     wtf_table_insert(t, 2, "value2");
