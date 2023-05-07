@@ -10,15 +10,16 @@
 
 int g_val = 42;
 // some statements I need to be aware of before implementation
-static void wtf_table_statements(void** state) { // NOLINT
+static void wtf_table_statements(void** state) {
+    (void)state;
     // expected that all pointers are aligned
     assert_true(_Alignof(int*) >= 4);
     int* p = &g_val;
 
     // cast to integer
     uintptr_t i = (uintptr_t)p;
-    print_message("original: %p, casted to int     : 0x%lx\n", p, i);
-    print_message("original: %p, casted back to ptr: %p\n", p, (int*)i); // NOLINT
+    print_message("original: %p, casted to int     : 0x%lx\n", (void*)p, i);
+    print_message("original: %p, casted back to ptr: %p\n", (void*)p, (void*)i); // NOLINT
 
     assert_ptr_equal(p, (int*)i); // NOLINT: Integer to pointer cast pessimizes optimization opportunities
 
@@ -27,7 +28,7 @@ static void wtf_table_statements(void** state) { // NOLINT
 
     // add tag to integer pointer representation
     i = i | 1U;
-    print_message("original: %p, casted back marked: %p\n", p, (int*)i); // NOLINT
+    print_message("original: %p, casted back marked: %p\n", (void*)p, (void*)i); // NOLINT
 
     // cast back to pointer
     int* pt = (int*)i; // NOLINT: Integer to pointer cast pessimizes optimization opportunities
@@ -49,7 +50,8 @@ typedef union {
     atomic_uintptr_t as_uint;
 } atomic_iptr_uint_u;
 
-static void wtf_table_atomic_statements(void** state) { // NOLINT
+static void wtf_table_atomic_statements(void** state) {
+    (void)state;
     // expected that all atomic pointers are aligned (4 bytes boundary on x32 systems)
     assert_true(_Alignof(atomic_iptr_uint_u) >= 4);
     assert_true(_Alignof(atomic_iptr_t) >= 4);
@@ -58,72 +60,72 @@ static void wtf_table_atomic_statements(void** state) { // NOLINT
     atomic_iptr_uint_u u;
     u.as_ptr = &g_val;
 
-    print_message("atomic pointer representation: %p, atomic uint representation: 0x%lx\n", u.as_ptr, u.as_uint);
+    print_message("atomic pointer representation: %p, atomic uint representation: 0x%lx\n", (void*)u.as_ptr, u.as_uint);
     // 2 LSB are not used
     assert_true((u.as_uint & 3U) == 0U);
 
     // add tag to LSB of integer pointer representation
     atomic_fetch_or(&u.as_uint, (uintptr_t)(1U));
-    print_message("marked  : %p, 0x%lx\n", u.as_ptr, u.as_uint);
+    print_message("marked  : %p, 0x%lx\n", (void*)u.as_ptr, u.as_uint);
 
     // remove tag from LSB
     atomic_fetch_and(&u.as_uint, ~((uintptr_t)(1U)));
-    print_message("unmarked: %p, 0x%lx\n", u.as_ptr, u.as_uint);
+    print_message("unmarked: %p, 0x%lx\n", (void*)u.as_ptr, u.as_uint);
     *u.as_ptr = 0;
     assert_int_equal(g_val, 0);
 }
 
-static void wtf_table_nodes_marking(void** state) { // NOLINT
-
+static void wtf_table_nodes_marking(void** state) {
+    (void)state;
     { // non-atomic marking
         int* new_int = malloc(sizeof(int));
-        print_message("\n initial arr: %p\n", new_int);
+        print_message("\n initial arr: %p\n", (void*)new_int);
         assert_false(is_array(new_int));
         mark_as_array((void**)&new_int);
-        print_message("  marked arr: %p\n", new_int);
+        print_message("  marked arr: %p\n", (void*)new_int);
         assert_true(is_array(new_int));
 
         int* ptr = get_unmarked_array(new_int);
-        print_message("unmarked arr: %p\n", ptr);
+        print_message("unmarked arr: %p\n", (void*)ptr);
         assert_false(is_array(ptr));
         assert_true(is_array(new_int));
 
         unmark_array((void**)&new_int);
-        print_message("unmarked arr: %p\n", new_int);
+        print_message("unmarked arr: %p\n", (void*)new_int);
         assert_false(is_array(new_int));
         free(new_int);
     }
 
     { // atomic marking
         atomic_node_ptr_t atomic_node = malloc(sizeof(node_t));
-        print_message("\n initial atomic node: %p\n", atomic_node);
+        print_message("\n initial atomic node: %p\n", (void*)atomic_node);
         assert_false(is_atomic_node_marked(atomic_node));
         mark_atomic_node(&atomic_node);
-        print_message("  marked atomic node: %p\n", atomic_node);
+        print_message("  marked atomic node: %p\n", (void*)atomic_node);
         assert_true(is_atomic_node_marked(atomic_node));
 
-        node_ptr_t tmp = get_unmarked_atomic_node(atomic_node);
-        print_message("unmarked atomic node: %p\n", tmp);
-        assert_false(is_atomic_node_marked(tmp));
+        atomic_node_ptr_t* tmp = get_unmarked_atomic_node(atomic_node);
+        print_message("unmarked atomic node: %p\n", (void*)tmp);
+        assert_false(is_atomic_node_marked((void*)tmp));
         // origin is still marked
         assert_true(is_atomic_node_marked(atomic_node));
 
         unmark_atomic_node(&atomic_node);
         assert_false(is_atomic_node_marked(atomic_node));
-        print_message("unmarked atomic node: %p\n", atomic_node);
+        print_message("unmarked atomic node: %p\n", (void*)atomic_node);
 
         assert_false(is_atomic_array(atomic_node));
         mark_atomic_array(&atomic_node);
-        print_message("\nmarked atomic arr: %p\n", atomic_node);
+        print_message("\nmarked atomic arr: %p\n", (void*)atomic_node);
         assert_true(is_atomic_array(atomic_node));
 
-        atomic_node_ptr_t tmp_arr = get_unmarked_atomic_array(atomic_node);
-        print_message("unmarked atomic arr: %p\n", tmp_arr);
-        assert_false(is_atomic_array(tmp_arr));
+        atomic_node_ptr_t* tmp_arr = get_unmarked_atomic_array(atomic_node);
+        print_message("unmarked atomic arr: %p\n", (void*)tmp_arr);
+        assert_false(is_atomic_array((void*)tmp_arr));
         // origin is still marked
         assert_true(is_atomic_array(atomic_node));
         unmark_atomic_array(&atomic_node);
-        print_message("unmarked atomic arr: %p\n", atomic_node);
+        print_message("unmarked atomic arr: %p\n", (void*)atomic_node);
         assert_false(is_atomic_array(atomic_node));
 
         free(atomic_node);
@@ -135,7 +137,8 @@ static void wtf_table_nodes_marking(void** state) { // NOLINT
     }
 }
 
-static void wtf_table_creation_deletion(void** state) { // NOLINT
+static void wtf_table_creation_deletion(void** state) {
+    (void)state;
     wtf_table_t* t = wtf_table_create();
     assert_ptr_not_equal(t, NULL);
     wtf_table_destroy(&t);
@@ -147,7 +150,8 @@ void get_count(atomic_node_ptr_t n, void* counter) {
     (*(size_t*)counter)++;
 }
 
-static void wtf_table_for_each_test(void** state) { // NOLINT
+static void wtf_table_for_each_test(void** state) {
+    (void)state;
     wtf_table_t* t = wtf_table_create();
     size_t count = 42;
     for (size_t i = 0; i < count; ++i) {
@@ -160,7 +164,8 @@ static void wtf_table_for_each_test(void** state) { // NOLINT
     wtf_table_destroy(&t);
 }
 
-static void wtf_table_simple_insert_find(void** state) { // NOLINT
+static void wtf_table_simple_insert_find(void** state) {
+    (void)state;
     wtf_table_t* t = wtf_table_create();
     const void* res = wtf_table_insert(t, 0, "value0");
     assert_ptr_equal(res, NULL);
@@ -183,7 +188,8 @@ static void wtf_table_simple_insert_find(void** state) { // NOLINT
     wtf_table_destroy(&t);
 }
 
-static void wtf_table_simple_insert_duplicates(void** state) { // NOLINT
+static void wtf_table_simple_insert_duplicates(void** state) {
+    (void)state;
     wtf_table_t* t = wtf_table_create();
     void* res = wtf_table_insert(t, 0, "42");
     assert_ptr_equal(res, NULL);
@@ -204,7 +210,8 @@ static void wtf_table_simple_insert_duplicates(void** state) { // NOLINT
     wtf_table_destroy(&t);
 }
 
-static void wtf_table_insert_find_in_subarrays(void** state) { // NOLINT
+static void wtf_table_insert_find_in_subarrays(void** state) {
+    (void)state;
     wtf_table_t* t = wtf_table_create();
     const void* res = wtf_table_insert(t, 0, "value0");
     assert_ptr_equal(res, NULL);
@@ -243,7 +250,8 @@ static void wtf_table_insert_find_in_subarrays(void** state) { // NOLINT
     wtf_table_destroy(&t);
 }
 
-static void wtf_table_insert_find_on_max_depth(void** state) { // NOLINT
+static void wtf_table_insert_find_on_max_depth(void** state) {
+    (void)state;
     node_t nodes[] = {
         {0L, "0"},             // 0
         {1L << 6, "1 << 6"},   // 1
@@ -276,7 +284,8 @@ void print_node(atomic_node_ptr_t n, void* user_data) {
     printf("key: %lu, val: %s\n", ((node_t*)n)->hash_, (char*)((node_t*)n)->value_);
 }
 
-static void wtf_table_print(void** state) { // NOLINT
+static void wtf_table_print(void** state) {
+    (void)state;
     wtf_table_t* t = wtf_table_create();
     wtf_table_insert(t, 0, "value0");
     wtf_table_insert(t, 1, "value1");
