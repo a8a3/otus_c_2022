@@ -120,8 +120,6 @@ atomic_node_ptr_t* wtf_table_expand_table(atomic_node_ptr_t* expanded_node, size
     }
     memset(new_array, 0, sizeof(atomic_node_ptr_t) * new_array_sz);
     printf("exp: new array allocated: %p\n", (void*)new_array);
-
-    // calc expanded node idx in new array
     uint8_t expanded_node_new_pos = node->hash_ >> (BIT_SHIFT + s) & (new_array_sz - 1);
     // insert expanded node in new array
     new_array[expanded_node_new_pos] = node;
@@ -160,62 +158,106 @@ bool wtf_table_insert(wtf_table_t* t, size_t hash, void* value) {
         return false;
     }
     atomic_node_ptr_t* cur_arr = t->head_;
+    node_t* cur_node = NULL;
+    node_t* cur_node2 = NULL;
     uint8_t fail_count = 0, pos = 0;
 
-    for (size_t s = 0; s < ARR_SZ; s += BIT_SHIFT) {
+    for (size_t shift = 0; shift < ARR_SZ; shift += BIT_SHIFT) {
         printf("ins: cur_arr: %p\n", (void*)cur_arr);
         pos = hash & (ARR_SZ - 1); // position in current array
         printf("ins: hash: %zu, pos in local: %u\n", hash, pos);
-
-        node_t* cur_node = atomic_load(&cur_arr[pos]);
         hash >>= BIT_SHIFT;
         fail_count = 0;
 
         for (;;) {
             if (fail_count > MAX_FAIL_CNT) {
-                // TODO: mark ptr in array(i.e cur_arr[pos]), not local val
-                mark_node((void**)&cur_node);
+                mark_atomic_node(&cur_arr[pos]);
             }
 
+            cur_node = atomic_load(&cur_arr[pos]);
             printf("ins: candidate at %u pos is %p\n", pos, (void*)cur_node);
+
             if (is_array(cur_node)) {
                 cur_arr = get_unmarked_array(cur_node);
                 break; // for
             } else if (is_node_marked(cur_node)) {
-                // TODO:   local = expand_table(local, pos, node, r);
-                break;
+                atomic_node_ptr_t* expanded = wtf_table_expand_table(&cur_arr[pos], shift);
+                if (expanded) {
+                    cur_arr = get_unmarked_atomic_array((void*)expanded);
+                    printf("ins: set cur_arr to %p\n", (void*)cur_arr);
+                    break; // for
+                } else {
+                    ++fail_count;
+                }
             } else if (NULL == cur_node) {
                 printf("ins: try insert: obj: %p, exp: %p, desired: %p\n", (void*)cur_arr[pos], (void*)cur_node, (void*)new_node);
+                // LP 
                 if (atomic_compare_exchange_strong(&cur_arr[pos], &cur_node, new_node)) {
                     printf("ins: %p is inserted into: %p, at %u, level: %lu\n", (void*)cur_arr[pos], (void*)cur_arr, pos,
-                           s / BIT_SHIFT);
+                           shift / BIT_SHIFT);
                     return true;
                 } else {
-                    // TBD
-                    // increase fail_count?
+                    // CAS failed, read new value as it must be changed
+                    // LP
+                    cur_node = atomic_load(&cur_arr[pos]);
+                    if (is_array(cur_node)) {
+                        cur_arr = get_unmarked_array(cur_node);
+                        break;
+                    } else if (is_node_marked(cur_node)) {
+                        atomic_node_ptr_t* expanded = wtf_table_expand_table(&cur_arr[pos], shift);
+                        if (expanded) {
+                            cur_arr = get_unmarked_atomic_array((void*)expanded);
+                            printf("ins: set cur_arr to %p\n", (void*)cur_arr);
+                            break; // for
+                        } else {
+                            ++fail_count;
+                        }
+                    } else if (cur_node->hash_ == new_node->hash_) {
+                        free(new_node);
+                        return true;
+                    } else {
+                        ++fail_count;
+                    }
                 }
             } else {
-                size_t cur_hash = cur_node->hash_;
-                size_t new_hash = new_node->hash_;
-                if (cur_hash == new_hash) {
+                if (cur_node->hash_ == new_node->hash_) {
+                    // LP
                     if (atomic_compare_exchange_strong(&cur_arr[pos], &cur_node, new_node)) {
-                        printf("ins: %p is inserted at %u, level: %lu\n", (void*)new_node, pos, s / BIT_SHIFT);
+                        printf("ins: %p is inserted at %u, level: %lu\n", (void*)new_node, pos, shift / BIT_SHIFT);
                         free(cur_node);
                         return true;
                     } else {
-                        // TBD
+                        // CAS failed, read new value as it must be changed
+                        // LP
+                        cur_node2 = atomic_load(&cur_arr[pos]);
+                        if (is_array(cur_node2)) {
+                            cur_arr = get_unmarked_array(cur_node2);
+                            break; // for
+                        } else if (is_node_marked(cur_node2) && (get_unmarked_node(cur_node2) == cur_node)) {
+                            atomic_node_ptr_t* expanded = wtf_table_expand_table(&cur_arr[pos], shift);
+                            if (expanded) {
+                                cur_arr = get_unmarked_atomic_array((void*)expanded);
+                                printf("ins: set cur_arr to %p\n", (void*)cur_arr);
+                                break; // for
+                            } else {
+                                ++fail_count;
+                            }
+                        } else {
+                            free(new_node);
+                            return true;
+                        }
                     }
                 } else {
                     printf("ins: expand %p\n", (void*)cur_node);
-                    atomic_node_ptr_t* expanded = wtf_table_expand_table(&cur_arr[pos], s);
+                    atomic_node_ptr_t* expanded = wtf_table_expand_table(&cur_arr[pos], shift);
                     printf("ins: expanded %p\n", (void*)expanded);
 
-                    if (!is_atomic_array((void*)expanded)) {
-                        ++fail_count;
-                    } else {
+                    if (expanded) {
                         cur_arr = get_unmarked_atomic_array((void*)expanded);
                         printf("ins: set cur_arr to %p\n", (void*)cur_arr);
-                        break; // inner for
+                        break; // for
+                    } else {
+                       ++fail_count;
                     }
                 }
             }
