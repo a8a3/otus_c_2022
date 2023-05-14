@@ -16,7 +16,7 @@ int inserter(void* data) {
     //    while (!run)
     //        ;
     for (int i = d->begin; i <= d->end; ++i) {
-        void* res = wtf_table_insert(d->t, i, values[i]);
+        bool res = wtf_table_insert(d->t, i, values[i]);
         printf("value: %s, %s\n", values[i], (res ? "updated" : "inserted"));
     }
     return 0;

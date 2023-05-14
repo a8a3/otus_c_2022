@@ -5,7 +5,7 @@ executable(
     'wtf_table_sample',
     'wtf_table_sample.c',
     include_directories: incdir,
-    c_args: ['-Wall', '-Wextra', '-Wpedantic', '-O1'],
+    c_args: ['-Wall', '-Wextra', '-Wpedantic', '-O0'],
     dependencies: thread_dep,
 #   link_args: ['-ltcmalloc']
 )
@@ -14,6 +14,5 @@ executable(
     'tools_test',
     'tools_test.c',
     c_args: ['-Wall', '-Wextra', '-Wpedantic', '-O1'],
-    dependencies: thread_dep,
-#   link_args: ['-ltcmalloc']
+    dependencies: thread_dep
 )

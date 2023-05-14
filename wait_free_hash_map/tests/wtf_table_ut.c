@@ -167,23 +167,23 @@ static void wtf_table_for_each_test(void** state) {
 static void wtf_table_simple_insert_find(void** state) {
     (void)state;
     wtf_table_t* t = wtf_table_create();
-    const void* res = wtf_table_insert(t, 0, "value0");
-    assert_ptr_equal(res, NULL);
-    res = wtf_table_find(t, 0);
-    assert_string_equal(res, "value0");
-    res = wtf_table_insert(t, 1, "value1");
-    res = wtf_table_insert(t, 2, "value2");
-    res = wtf_table_insert(t, 3, "value3");
-    res = wtf_table_insert(t, 4, "value4");
+    bool ins = wtf_table_insert(t, 0, "value0");
+    assert_true(ins);
+    void* fnd = wtf_table_find(t, 0);
+    assert_string_equal(fnd, "value0");
+    wtf_table_insert(t, 1, "value1");
+    wtf_table_insert(t, 2, "value2");
+    wtf_table_insert(t, 3, "value3");
+    wtf_table_insert(t, 4, "value4");
 
-    res = wtf_table_find(t, 1);
-    assert_string_equal(res, "value1");
-    res = wtf_table_find(t, 2);
-    assert_string_equal(res, "value2");
-    res = wtf_table_find(t, 3);
-    assert_string_equal(res, "value3");
-    res = wtf_table_find(t, 4);
-    assert_string_equal(res, "value4");
+    fnd = wtf_table_find(t, 1);
+    assert_string_equal(fnd, "value1");
+    fnd = wtf_table_find(t, 2);
+    assert_string_equal(fnd, "value2");
+    fnd = wtf_table_find(t, 3);
+    assert_string_equal(fnd, "value3");
+    fnd = wtf_table_find(t, 4);
+    assert_string_equal(fnd, "value4");
 
     wtf_table_destroy(&t);
 }
@@ -191,61 +191,53 @@ static void wtf_table_simple_insert_find(void** state) {
 static void wtf_table_simple_insert_duplicates(void** state) {
     (void)state;
     wtf_table_t* t = wtf_table_create();
-    void* res = wtf_table_insert(t, 0, "42");
-    assert_ptr_equal(res, NULL);
-    res = wtf_table_find(t, 0);
-    assert_string_equal(res, "42");
+    bool res = wtf_table_insert(t, 0, "42");
+    assert_true(res);
+    assert_string_equal(wtf_table_find(t, 0), "42");
 
     res = wtf_table_insert(t, 0, "new val");
-    assert_ptr_not_equal(res, NULL);
+    assert_true(res);
 
-    node_t* prev = (node_t*)res;
-    assert_int_equal(prev->hash_, 0);
-    assert_string_equal(prev->value_, "42");
-    free(res);
-
-    res = wtf_table_find(t, 0);
-    assert_string_equal(res, "new val");
-
+    assert_string_equal(wtf_table_find(t, 0), "new val");
     wtf_table_destroy(&t);
 }
 
 static void wtf_table_insert_find_in_subarrays(void** state) {
     (void)state;
     wtf_table_t* t = wtf_table_create();
-    const void* res = wtf_table_insert(t, 0, "value0");
-    assert_ptr_equal(res, NULL);
+    bool ins = wtf_table_insert(t, 0, "value0");
+    assert_true(ins);
     // find node in initial position
-    res = wtf_table_find(t, 0);
-    assert_string_equal(res, "value0");
+    void* fnd = wtf_table_find(t, 0);
+    assert_string_equal(fnd, "value0");
 
     // 64(2^6) has same 6 LSBs as 0 -> subarray creation is expected
-    res = wtf_table_insert(t, 64, "value64");
-    assert_ptr_equal(res, NULL);
+    ins = wtf_table_insert(t, 64, "value64");
+    assert_true(ins);
 
     // find new value in subarray
-    res = wtf_table_find(t, 64);
-    assert_string_equal(res, "value64");
+    fnd = wtf_table_find(t, 64);
+    assert_string_equal(fnd, "value64");
 
     // find first node in new position on level 1
-    res = wtf_table_find(t, 0);
-    assert_string_equal(res, "value0");
+    fnd = wtf_table_find(t, 0);
+    assert_string_equal(fnd, "value0");
 
     // 4096(2^12) has same 6 LSBs as 0 and 64 -> subarray creation is expected
-    res = wtf_table_insert(t, 4096, "value4096");
-    assert_ptr_equal(res, NULL);
+    ins = wtf_table_insert(t, 4096, "value4096");
+    assert_true(ins);
 
     // find new value in subarray
-    res = wtf_table_find(t, 4096);
-    assert_string_equal(res, "value4096");
+    fnd = wtf_table_find(t, 4096);
+    assert_string_equal(fnd, "value4096");
 
     // 262144(2^18) has same 6 LSBs as 0, 64, 4096 -> subarray creation is expected
-    res = wtf_table_insert(t, 262144, "value262144");
-    assert_ptr_equal(res, NULL);
+    ins = wtf_table_insert(t, 262144, "value262144");
+    assert_true(ins);
 
     // find new value in subarray
-    res = wtf_table_find(t, 262144);
-    assert_string_equal(res, "value262144");
+    fnd = wtf_table_find(t, 262144);
+    assert_string_equal(fnd, "value262144");
 
     wtf_table_destroy(&t);
 }
@@ -271,7 +263,7 @@ static void wtf_table_insert_find_on_max_depth(void** state) {
     wtf_table_t* t = wtf_table_create();
 
     for (size_t i = 0; i < sizeof(nodes) / sizeof(nodes[0]); ++i) {
-        assert_ptr_equal(NULL, wtf_table_insert(t, nodes[i].hash_, nodes[i].value_));
+        assert_true(wtf_table_insert(t, nodes[i].hash_, nodes[i].value_));
     }
     for (size_t i = 0; i < sizeof(nodes) / sizeof(nodes[0]); ++i) {
         assert_string_equal(nodes[i].value_, wtf_table_find(t, nodes[i].hash_));
